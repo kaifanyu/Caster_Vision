@@ -1,0 +1,240 @@
+assumptions:
+  camera_fixed_to_chassis: true
+  ball_center_stationary_in_image: true
+  car_and_caster_clocks_synchronized: false
+  units_are_meters_radians_seconds: true
+input:
+  swivel_clip: C:\Users\kyu\Documents\Upenn\Caster_Vision\caster_wheel_rot\data\swivel\clip.mp4
+  ball_clip: C:\Users\kyu\Documents\Upenn\Caster_Vision\caster_wheel_rot\data\ball\clip.mp4
+  car_track: C:\Users\kyu\Documents\Upenn\Caster_Vision\caster_wheel_rot\data\car_tracks\track.csv
+  type: auto
+  max_frames: null
+  fps_override: null
+camera:
+  K:
+  - - 1407.09
+    - 0.0
+    - 945.81
+  - - 0.0
+    - 1407.12
+    - 562.09
+  - - 0.0
+    - 0.0
+    - 1.0
+  dist:
+  - 0.03408
+  - -0.0757
+  - -0.00061
+  - 0.000899
+  fov_deg: 68.6
+  T_car_from_cam:
+  - - -0.008188124618927706
+    - 0.29372321784916117
+    - -0.955855441953206
+    - 0.3746534259768794
+  - - 0.9999664702915756
+    - 0.0022965183803914657
+    - -0.00786029871797922
+    - -0.02460874193274639
+  - - -0.00011361264125764325
+    - -0.9558877535043864
+    - -0.2937321735739976
+    - -0.01900051425711214
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+swivel:
+  marker:
+    dictionary: DICT_4X4_50
+    id: 0
+    size_m: 0.04
+    psi0_rad: -3.1037233914855733
+    max_reprojection_error_px: 2.0
+    zero_rotations:
+      '0':
+      - - -0.9990958586632699
+        - 0.03794336753076275
+        - 0.019177227701852415
+      - - -0.03771318550797113
+        - -0.9992138183130452
+        - 0.012225421510348453
+      - - 0.019626024578212303
+        - 0.011491133655553437
+        - 0.9997413530541615
+      '1':
+      - - -0.9876844800643868
+        - 0.15224523875251858
+        - 0.03606598282496303
+      - - -0.1493098627914239
+        - -0.9860544791380933
+        - 0.07350597965410292
+      - - 0.046753959331249026
+        - 0.06721570834925296
+        - 0.9966424212514536
+    calibration_report: C:\Users\kyu\Documents\Upenn\Caster_Vision\caster_wheel_rot\out\detection_upgrade\tag_calibration.json
+    max_disagreement_deg: 8.0
+    max_step_deg: 35.0
+    max_unwrap_gap_frames: 5
+  geometry:
+    calibrated: true
+    swivel_axis_car:
+    - 0.0
+    - 0.0
+    - 0.0
+    hub_offset0_car:
+    - 0.0
+    - -0.045
+    - -0.184
+    axle0_car:
+    - 1.0
+    - 0.0
+    - 0.0
+    wheel_radius_m: 0.0515
+    wheel_width_m: 0.049
+    sidewall_inner_fraction: 0.4112
+    edge_on_min_cos: 0.18
+  r_eff_m: null
+  roll_direction_sign: 1.0
+  heading_direction_sign: 1.0
+  direction_sign_calibrated: false
+  reference_dot:
+    enabled: false
+    hsv_ranges:
+    - lo:
+      - 45
+      - 35
+      - 90
+      hi:
+      - 85
+      - 255
+      - 255
+    min_area_px2: 8
+    max_area_px2: 1000
+    max_gap_frames: 5
+    max_resync_error_deg: 45
+  mask:
+    enabled: true
+    exclude_markers: true
+    support_margin_px: 3
+    white_face:
+      enabled: true
+      max_saturation: 100
+      min_value: 95
+      close_radius_px: 5
+    marker_polygons:
+      '0':
+      - - -0.85
+        - -0.8
+      - - 3.2
+        - -0.8
+      - - 3.2
+        - 0.8
+      - - -0.85
+        - 0.8
+      '1':
+      - - -2.4
+        - -0.8
+      - - 0.85
+        - -0.8
+      - - 0.85
+        - 0.8
+      - - -2.4
+        - 0.8
+ball:
+  r_eff_m: null
+  R_ball_to_car: null
+  R_bc: null
+  roll_direction_sign: -1.0
+  direction_sign_calibrated: false
+  circle:
+    u0: null
+    v0: null
+    r_px: null
+    refit_each_frame: false
+  segment:
+    mode: color
+    top_hsv:
+      lo:
+      - 85
+      - 60
+      - 45
+      hi:
+      - 115
+      - 255
+      - 255
+    bottom_hsv:
+      lo:
+      - 135
+      - 60
+      - 45
+      hi:
+      - 175
+      - 255
+      - 255
+    yoke_hsv:
+      enabled: true
+      lo:
+      - 0
+      - 0
+      - 0
+      hi:
+      - 179
+      - 255
+      - 45
+  synthetic_validation:
+    track:
+      max_corners: 400
+      quality: 0.01
+      min_distance_px: 6
+      klt_win: 21
+      pyramid_levels: 3
+      fwd_bwd_err_px: 1.0
+      limb_cull_deg: 65.0
+    estimate:
+      ransac_iters: 200
+      ransac_inlier_deg: 1.0
+      min_inliers: 8
+      random_seed: 7
+track:
+  max_corners: 500
+  quality: 0.008
+  min_distance_px: 5
+  klt_win: 25
+  max_level: 3
+  fwd_bwd_err_px: 1.0
+  motion_prediction: true
+estimate:
+  ransac_iters: 250
+  ransac_inlier_deg: 1.5
+  min_inliers: 8
+  max_off_axis_deg: 1.5
+  max_radial_error_fraction: 0.12
+  max_reprojection_error_px: 4.0
+  min_angular_span_deg: 60.0
+  min_inlier_ratio: 0.5
+car_track:
+  r_arm_car_m:
+  - 0.25
+  - 0.0
+  theta_unit: rad
+  savgol_window: 9
+  savgol_polyorder: 2
+  time_offset_s: 0.0
+sync:
+  method: common_event
+  caster_event_time_s: null
+  car_event_time_s: null
+  max_offset_s: 1.0
+metrics:
+  speed_epsilon_mps: 0.005
+  slip_speed_epsilon_mps: 0.02
+  max_lag_s: 1.0
+  settling_threshold_deg: 5.0
+  settling_dwell_s: 0.25
+  shimmy_min_hz: 0.5
+  shimmy_max_hz: 20.0
+  shimmy_segment_s: null
+output:
+  dir: out
+  save_overlay_video: true

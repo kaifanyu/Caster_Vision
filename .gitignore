@@ -1,0 +1,20 @@
+# Local Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+*.egg-info/
+
+# Generated results and local machine configuration
+out/
+config.yaml
+
+# Large source/output media (447+ MB in this working tree)
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Preserved metadata from the formerly embedded repository
+.git.nested-backup/

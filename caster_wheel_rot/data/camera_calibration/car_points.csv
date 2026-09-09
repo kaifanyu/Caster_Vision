@@ -1,0 +1,9 @@
+label,x,y,z
+wall_hole_1_left,0.02552,-0.0408,-0.0248
+wall_hole_2,0.02552,-0.0154,-0.0248
+wall_hole_3,0.02552,0.0154,-0.0248
+wall_hole_4_right,0.02552,0.0408,-0.0248
+wall_top_edge_left,0.02352,-0.0488,0.0
+wall_top_edge_right,0.02352,0.0488,0.0
+flange_front_corner_left,0.04938,-0.057317,-0.064371
+flange_front_corner_right,0.04938,0.057317,-0.064371

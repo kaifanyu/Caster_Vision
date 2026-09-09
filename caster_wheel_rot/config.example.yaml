@@ -1,0 +1,161 @@
+assumptions:
+  camera_fixed_to_chassis: true
+  ball_center_stationary_in_image: true
+  car_and_caster_clocks_synchronized: false
+  units_are_meters_radians_seconds: true
+
+input:
+  swivel_clip: data/swivel/clip.mp4
+  ball_clip: data/ball/clip.mp4
+  car_track: data/car_tracks/track.csv
+  type: auto
+  max_frames: null
+  fps_override: null
+
+camera:
+  # Calibrate these for the exact camera, lens settings, crop, and resolution.
+  K: null
+  dist: [0, 0, 0, 0, 0]
+  fov_deg: 60.0
+  # Camera -> car homogeneous transform. null is intentionally not trusted.
+  T_car_from_cam: null
+
+swivel:
+  marker:
+    dictionary: DICT_4X4_50
+    id: 0
+    size_m: 0.040
+    psi0_rad: null
+    max_reprojection_error_px: 2.0
+    # Populated by calibrate_swivel_tags.py; each matrix maps that tag to
+    # car coordinates at psi=0. An empty map retains the single-ID workflow.
+    zero_rotations: {}
+    max_disagreement_deg: 8.0
+    max_step_deg: 35.0
+    max_unwrap_gap_frames: 5
+  mask:
+    enabled: false
+    exclude_markers: true
+    # Polygons in each tag's coordinates, measured in marker-side units.
+    # The generic default excludes only the marker and its white border.
+    # Add a per-ID polygon covering its carrier using calibrate_wheel_face.py.
+    marker_polygons: {}
+    fork_polygons_m: []
+    support_margin_px: 3
+    white_face:
+      # Enable only for a white printed disk, after checking an overlay.
+      enabled: false
+      max_saturation: 100
+      min_value: 95
+      close_radius_px: 5
+  geometry:
+    # Set true only by the geometry calibration/measurement command.
+    calibrated: false
+    # S is the steering-axis reference point, in car coordinates.
+    swivel_axis_car: [0.250, 0.000, 0.160]
+    # Hub offset at psi=0. Its x component is normally -trail.
+    hub_offset0_car: [-0.050, 0.000, -0.081]
+    axle0_car: [0.000, -1.000, 0.000]
+    wheel_radius_m: 0.079375
+    wheel_width_m: 0.035
+    sidewall_inner_fraction: 0.20
+    edge_on_min_cos: 0.18
+  r_eff_m: null
+  roll_direction_sign: 1.0
+  heading_direction_sign: 1.0
+  direction_sign_calibrated: false
+  reference_dot:
+    enabled: true
+    # Red, including the OpenCV HSV hue wrap. Tune for your paint/lighting.
+    hsv_ranges:
+      - {lo: [0, 80, 70], hi: [12, 255, 255]}
+      - {lo: [168, 80, 70], hi: [179, 255, 255]}
+    min_area_px2: 8
+    max_area_px2: 1000
+    max_gap_frames: 5
+    max_resync_error_deg: 45
+    # A physical upper bound, not an inferred rate. Resync additionally requires
+    # (frames since the reference anchor) * max_step_deg < 180 degrees.
+    max_step_deg: 30
+
+ball:
+  r_eff_m: null
+  # Derived by calibrate_ball_axes as R_car_from_camera @ R_bc.
+  R_ball_to_car: null
+  R_bc: null
+  roll_direction_sign: -1.0
+  direction_sign_calibrated: false
+  circle:
+    u0: null
+    v0: null
+    r_px: null
+    refit_each_frame: false
+  segment:
+    mode: color
+    top_hsv: {lo: [85, 60, 45], hi: [115, 255, 255]}
+    bottom_hsv: {lo: [135, 60, 45], hi: [175, 255, 255]}
+    yoke_hsv: {enabled: true, lo: [0, 0, 0], hi: [179, 255, 45]}
+  # Deterministic release-oracle profile. These are intentionally separate
+  # from the sidewall/real-footage tracking profile below.
+  synthetic_validation:
+    track:
+      max_corners: 400
+      quality: 0.01
+      min_distance_px: 6
+      klt_win: 21
+      pyramid_levels: 3
+      fwd_bwd_err_px: 1.0
+      limb_cull_deg: 65.0
+    estimate:
+      ransac_iters: 200
+      ransac_inlier_deg: 1.0
+      min_inliers: 8
+      random_seed: 7
+
+track:
+  max_corners: 500
+  quality: 0.008
+  min_distance_px: 5
+  klt_win: 25
+  max_level: 3
+  fwd_bwd_err_px: 1.0
+  motion_prediction: false  # swivel only; seed KLT with fork + prior roll motion
+
+estimate:
+  ransac_iters: 250
+  ransac_inlier_deg: 1.5
+  min_inliers: 8
+  max_off_axis_deg: 1.5
+  # Optional additional real-wheel quality gates. config.improved.yaml uses
+  # 0.12, 4.0, 60.0 and 0.5 respectively for the reviewed printed-wheel setup.
+  max_radial_error_fraction: null
+  max_reprojection_error_px: null
+  min_angular_span_deg: 0.0
+  min_inlier_ratio: 0.0
+
+car_track:
+  r_arm_car_m: [0.250, 0.000]
+  theta_unit: rad
+  savgol_window: 9
+  savgol_polyorder: 2
+  time_offset_s: 0.0
+
+sync:
+  method: common_event
+  caster_event_time_s: null
+  car_event_time_s: null
+  max_offset_s: 1.0
+
+metrics:
+  speed_epsilon_mps: 0.005
+  slip_speed_epsilon_mps: 0.02
+  max_lag_s: 1.0
+  settling_threshold_deg: 5.0
+  settling_dwell_s: 0.25
+  shimmy_min_hz: 0.5
+  shimmy_max_hz: 20.0
+  shimmy_segment_s: null
+
+output:
+  dir: out
+  save_overlay_video: true

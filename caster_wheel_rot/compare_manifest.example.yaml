@@ -1,0 +1,38 @@
+output_dir: out/comparison
+config: config.yaml
+require_pairs: true
+
+metrics:
+  min_contact_speed_mps: 0.005
+  min_longitudinal_speed_mps: 0.02
+  lag_max_s: 1.0
+  settling_threshold_deg: 5.0
+  settling_dwell_s: 0.25
+  shimmy_min_frequency_hz: 0.5
+  shimmy_max_frequency_hz: 20.0
+
+# Each pair should use the same floor, camera mounting, payload, commanded
+# maneuver, and speed profile. Caster timestamps must already share the car
+# track clock (or set caster_time_offset_s per row).
+runs:
+  - {id: straight-ball,  maneuver: straight,      device: ball,    caster_frames: data/processed/straight_ball.json,  car_track: data/car_tracks/straight_ball.csv}
+  - {id: straight-swivel,maneuver: straight,      device: swivel, caster_frames: data/processed/straight_swivel.json,car_track: data/car_tracks/straight_swivel.csv}
+  - {id: step-ball,      maneuver: step_turn,     device: ball,    caster_frames: data/processed/step_ball.json,      car_track: data/car_tracks/step_ball.csv, step_time_s: 1.0}
+  - {id: step-swivel,    maneuver: step_turn,     device: swivel, caster_frames: data/processed/step_swivel.json,    car_track: data/car_tracks/step_swivel.csv, step_time_s: 1.0}
+  - {id: slalom-ball,    maneuver: slalom,        device: ball,    caster_frames: data/processed/slalom_ball.json,    car_track: data/car_tracks/slalom_ball.csv, steady_segment_s: [1.0, 8.0]}
+  - {id: slalom-swivel,  maneuver: slalom,        device: swivel, caster_frames: data/processed/slalom_swivel.json,  car_track: data/car_tracks/slalom_swivel.csv, steady_segment_s: [1.0, 8.0]}
+  - {id: spin-ball,      maneuver: spin_in_place, device: ball,    caster_frames: data/processed/spin_ball.json,      car_track: data/car_tracks/spin_ball.csv}
+  - {id: spin-swivel,    maneuver: spin_in_place, device: swivel, caster_frames: data/processed/spin_swivel.json,    car_track: data/car_tracks/spin_swivel.csv}
+  - {id: figure8-ball,   maneuver: figure_8,      device: ball,    caster_frames: data/processed/figure8_ball.json,   car_track: data/car_tracks/figure8_ball.csv}
+  - {id: figure8-swivel, maneuver: figure_8,      device: swivel, caster_frames: data/processed/figure8_swivel.json, car_track: data/car_tracks/figure8_swivel.csv}
+
+# A row may run a raw clip instead. Its config must contain all camera/device
+# calibration and confirmed synchronization. Do not provide caster_frames and
+# clip on the same row.
+#
+#  - id: straight-swivel-raw
+#    maneuver: straight
+#    device: swivel
+#    clip: data/swivel/straight.mp4
+#    car_track: data/car_tracks/straight_swivel.csv
+#    config: config.yaml

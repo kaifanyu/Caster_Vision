@@ -1,0 +1,9 @@
+[project]
+name = "caster-wheel-rot"
+version = "0.1.0"
+description = "Synthetic-first ball and swivel caster vision comparison"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
