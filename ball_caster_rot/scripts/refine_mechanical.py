@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 """Jointly refit saved image observations with the caster's mechanical constraints.
 
-This uses the saved feature observations, without decoding or tracking the video
-again. Camera/circle geometry must match the source run. The calibrated frame,
-initial roll, shell mapping and configured shell gap may be changed for this fit.
+By default this uses saved observations without decoding the video. --rematch
+also verifies image correspondences to accepted material landmarks. Original
+camera/circle provenance must match the source run; the mechanism frame,
+initial roll, shell construction, normalized pivot and gap can be refitted.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -51,6 +53,9 @@ def parser() -> argparse.ArgumentParser:
         help="Numeric observation archive (default: offline_observations.npz beside results)",
     )
     result.add_argument("--output", type=Path, required=True, help="Separate output directory")
+    result.add_argument("--rematch", action="store_true", help=(
+        "Decode original images and propose geometry-guided matches to accepted material landmarks; "
+        "forward/backward, appearance and the original mechanical gates remain required"))
     return result
 
 
@@ -237,6 +242,7 @@ def _same_geometry(config, config_path: Path, metadata) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     config, config_path = load_config(args.config)
     _check_assumptions(config)
     source_results = args.results.expanduser().resolve()
@@ -258,11 +264,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     top_shell_sign = int(config.get("frame_calib", {}).get("top_shell_sign", 1))
     print(f"Refitting {archive.frame_count} saved frames with shared roll and independent shell spins.")
     print(f"Fixed rim gap / ball diameter: {mechanical_config.gap_fraction:g}")
-    fitted = refine_mechanical_trajectory(
-        archive.observations, archive.unconstrained_rotations, archive.unconstrained_valid,
-        archive.K, archive.center, frame, radius=archive.radius, config=mechanical_config,
-        offline_config=offline_config, top_shell_sign=top_shell_sign,
-    )
+    print(f"Shell geometry: {mechanical_config.geometry}")
+    if mechanical_config.geometry == "separated_hemispheres" and mechanical_config.pivot_camera is None:
+        print("Geometry seed: original assembly circle. Calibrate shell contours to measure the pivot / shell radius.")
+    provider = None
+    fit_options = {}
+    if args.rematch:
+        if not mechanical_config.window_frames:
+            raise ValueError("--rematch requires mechanical.window_frames > 0")
+        from ballrot.mechanical_rematch import ImageLandmarkRematcher
+        pivot = (archive.center if mechanical_config.pivot_camera is None else
+                 archive.radius*np.asarray(mechanical_config.pivot_camera))
+        provider = ImageLandmarkRematcher(
+            Path(payload["metadata"]["input"]), archive.K, distortion_coefficients(config.get("camera", {})),
+            pivot, frame, archive.radius, mechanical_config.gap_fraction, mechanical_config.geometry,
+            top_shell_sign, segmentation_config=config.get("segment", {}),
+            circle=tuple(payload["metadata"]["circle"]), max_frames=archive.frame_count,
+            max_tracks_per_frame=offline_config.max_tracks_per_frame)
+        fit_options["observation_provider"] = provider
+    try:
+        fitted = refine_mechanical_trajectory(
+            archive.observations, archive.unconstrained_rotations, archive.unconstrained_valid,
+            archive.K, archive.center, frame, radius=archive.radius, config=mechanical_config,
+            offline_config=offline_config, top_shell_sign=top_shell_sign, **fit_options,
+        )
+    finally:
+        if provider is not None:
+            provider.close()
+    rematching = None
+    if provider is not None:
+        rematching = {"summary": provider.diagnostics, "provenance": provider.provenance,
+                      "note": "Image-verified proposals; only final valid poses passed the mechanical fit."}
+        for name in SHELLS:
+            archive.observations[name].extend(provider.additions[name])
     motion = mechanical_motion(fitted.alpha, fitted.beta, fitted.valid)
     raw_motion = decompose_hemispheres(
         archive.unconstrained_rotations["top"], archive.unconstrained_rotations["bottom"], frame,
@@ -279,13 +313,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "mechanical_model": {**asdict(mechanical_config), "model": "shared_roll_independent_spin"},
         "source_results": str(source_results), "source_observations": str(observations_path),
         "mechanical_refit_note": (
-            "Joint fit of preserved undistorted image observations. Camera and sphere geometry "
-            "are unchanged; the configured mechanism frame and gap were applied anew. "
+            "Joint fit of preserved undistorted image observations. Original camera calibration "
+            "and observation provenance are preserved; the configured mechanism frame, shell "
+            "construction, optional pivot and gap were applied anew. "
             "Unconstrained poses and original tracking diagnostics are preserved. Invalid "
             "constrained poses are not substituted with independent shell motion. Shared "
             "roll and zero sideways tilt are imposed constraints, not accuracy measurements."
         ),
     }
+    if rematching is not None:
+        metadata["image_rematching"] = rematching["summary"]
     extra_summary = {
         key: payload.get("summary", {})[key] for key in ("temporal_tracking", "offline_tracking")
         if key in payload.get("summary", {})
@@ -300,6 +337,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     report_path = output_dir / "mechanical_report.json"
     report_path.write_text(json.dumps(_json_clean(fitted.diagnostics), indent=2) + "\n", encoding="utf-8")
     paths["mechanical_report"] = report_path
+    if rematching is not None:
+        rematch_path = output_dir / "rematching_report.json"
+        rematch_path.write_text(json.dumps(_json_clean(rematching), indent=2) + "\n", encoding="utf-8")
+        paths["rematching_report"] = rematch_path
+    # Material coordinates are tied to this exact saved model/frame. They are
+    # useful for auditing later relocalization and must not be reused under a
+    # different geometry or calibration without rebuilding the map.
+    if hasattr(fitted, "landmarks"):
+        map_path = output_dir / "mechanical_landmarks.npz"
+        map_arrays = {
+            "K": archive.K, "pivot": (archive.center if mechanical_config.pivot_camera is None
+                                      else archive.radius*np.asarray(mechanical_config.pivot_camera)),
+            "radius": np.asarray(archive.radius),
+            "frame": frame, "geometry": np.asarray(mechanical_config.geometry),
+            "gap_fraction": np.asarray(mechanical_config.gap_fraction),
+            "top_shell_sign": np.asarray(top_shell_sign),
+        }
+        for name in SHELLS:
+            identifiers = sorted(fitted.landmarks[name])
+            map_arrays[f"{name}_track_id"] = np.asarray(identifiers, dtype=np.int64)
+            map_arrays[f"{name}_points"] = np.asarray(
+                [fitted.landmarks[name][identifier] for identifier in identifiers]).reshape(-1, 3)
+        np.savez_compressed(map_path, **map_arrays)
+        paths["landmarks"] = map_path
     paths["observations"] = save_observations(
         output_dir / "offline_observations.npz", archive.observations,
         timestamps=archive.timestamps, K=archive.K, center=archive.center, radius=archive.radius,
@@ -316,7 +377,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  {name}: {path}")
     print("Render the constrained results with:")
     print(f'  .\\.venv\\Scripts\\python.exe .\\scripts\\simulate_measured.py --config "{config_path}" '
-          f'--results "{output_dir / "results.json"}" --output "{output_dir / "simulation"}" --tests axes replay')
+          f'--results "{output_dir / "results.json"}" --output "{output_dir / "simulation"}" --tests axes replay residuals')
     return 0
 
 

@@ -649,6 +649,8 @@ The current config also enables:
 ```yaml
 mechanical:
   enabled: true
+  geometry: separated_hemispheres
+  pivot_camera: null  # C/R; null uses the original assembly-circle seed
   gap_fraction: 0.10  # 20 mm gap / 200 mm ball diameter
 ```
 
@@ -665,18 +667,36 @@ ball radius, giving `20 / (2 * 100) = 0.10`. The fit uses a normalized radius;
 there is no separate physical-radius setting for rotation estimation. Keep
 `circle.r_px` in pixels. Zero means ideal touching rims. Cap landmarks, rendered
 surfaces, grids, and probes respect this fixed 3D gap. Its projected pixel width
-can change with perspective. The sphere center stays fixed, and this is not a
-full collision model of the yoke or shell openings.
+can change with perspective. The assembly pivot stays fixed. In
+`separated_hemispheres`, each complete hemisphere's center is
+`C + sign * R * gap_fraction * (F @ Rx(alpha))[:, 2]`; both translation and
+rotation enter the image fit and renderer. The legacy `common_sphere_caps`
+option instead cuts two caps out of one sphere with a shared center. These
+are different physical constructions. Neither models the yoke or shell holes.
+
+The old enclosing circle does not calibrate the curvature radius of a complete
+hemisphere. For separated shells, calibrate reviewed **outer silhouette**
+points from both shells (exclude inner rim edges, holes and the yoke):
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\calibrate_shell_geometry.py --config .\config.yaml --annotate --write
+```
+
+This fits the normalized pivot `C/R`, saving `mechanical.pivot_camera` only
+when its calibration checks pass. The original camera and circle remain
+observation provenance. The tool also accepts a reviewed points JSON through
+`--points`; see its `--help`. Refit after changing this geometry. Camera
+intrinsics, distortion and the home axes remain separately calibrated.
 
 `run.py` performs the fit when enabled; it requires both temporal and offline
 processing. To reuse saved observations without tracking again:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\refine_mechanical.py --config .\config.yaml --results .\out\offline_verified\results.json --output .\out\mechanical_verified
-.\.venv\Scripts\python.exe .\scripts\simulate_measured.py --config .\config.yaml --results .\out\mechanical_verified\results.json --output .\out\mechanical_verified\simulation --tests axes replay --stride 1 --render-width 640
+.\.venv\Scripts\python.exe .\scripts\refine_mechanical.py --config .\config.yaml --results .\out\real_recovered\results.json --output .\out\real_separated_recovered --rematch
+.\.venv\Scripts\python.exe .\scripts\simulate_measured.py --config .\config.yaml --results .\out\real_separated_recovered\results.json --output .\out\real_separated_recovered\simulation --tests axes replay residuals --stride 1 --render-width 640
 ```
 
-That example uses the saved 120-frame run. Substitute another `results.json`
+That example uses the saved 557-frame run. Substitute another `results.json`
 with its sibling schema-2-or-later `offline_observations.npz` for another run.
 The refit validates camera geometry and landmark provenance and preserves its
 source directory. Changes to starting roll or gap require refitting; changes
@@ -691,8 +711,23 @@ inliers connected to that reference. The 5-degree fit-correction limit is
 relative to the mechanically projected starting guess; the separate projection
 change from the unconstrained pose is reported. Rejected measurements remain
 invalid, without falling back to independent poses under a constrained label.
-Bad observations can still affect a robust fit, and disconnected components
-inherit their input reference rather than recovering unseen motion.
+Bad observations can still affect a robust fit. Windowed fitting retains
+references for each shell, gives a lagging shell extra attempts, and scans
+later windows after gaps. Trusted material landmarks are carried unchanged
+between windows. Reobserved known landmarks can recover a pose using PnP
+initialization followed by the same fixed-geometry mechanical pixel gates.
+New or unmatched landmarks cannot establish a new global reference. The
+optional `--rematch` decodes the original video and proposes verified image
+matches from accepted landmark templates; its proposals still must pass the
+mechanical fit. Reobserving orientation cannot determine unobserved complete
+turns during a gap.
+
+The `residuals` visualization writes `reprojection_overlay.mp4`: circles mark
+actual observed pixels, crosses mark predictions, and arrows show their
+errors. Green/red indicates pixel inlier/outlier status; rejected candidates
+are labeled separately from accepted poses. Track IDs are actual persistent
+IDs. The numbered rings in `axes_overlay.mp4` are synthetic probes. The
+refit also writes `mechanical_landmarks.npz` for auditing the fitted map.
 
 Inspect `mechanical_report.json`, `results.json.mechanical`, and
 `summary.mechanical_tracking`. CSV includes separate mechanical statuses.
@@ -892,6 +927,149 @@ calibration-dependent roll/spin. Interval rates use the saved timestamps;
 failed intervals remain missing. `--with-clip` also verifies source timestamps
 and adds actual video snapshots. Read the September 10 interpretation in
 [out/motion_history_20260910/README.md](out/motion_history_20260910/README.md).
+
+## Experimental Kalman axis overlay
+
+Fuse the preserved visual angles with a constant-velocity motion prediction,
+then render the result on the original footage:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\fuse_motion.py --results .\out\real_separated_recovered\results.json --output .\out\real_fused
+.\.venv\Scripts\python.exe .\scripts\visualize_fused_axes.py --results .\out\real_fused\results.json --output .\out\real_fused\axis_inspection
+Start-Process .\out\real_fused\axis_inspection\fused_axes_timeline.html
+Start-Process .\out\real_fused\axis_inspection\fused_axes_overlay.mp4
+```
+
+The output directory also contains `fused_axes_at_times.png`. The timeline
+compares the filtered spin axis with its input visual angle and the original
+accepted mechanical angle. Solid curves have a visual update; dashed curves
+are predictions. Unresolved moving axes and shell grids are hidden. X remains
+the fixed calibrated roll axis. A shell grid requires both common roll and
+that shell's spin; bottom observations cannot recover missing top spin.
+
+Each coordinate has an angle/rate Kalman state. At each actual video timestamp,
+the filter predicts `angle += rate * dt`, grows covariance using acceleration
+noise, and updates against one visual angle source. The angle observations
+come from fitting tracked image motion, not from an independent velocity
+sensor. Two shell-roll estimates form one conservative shared-roll observation;
+the mechanical fit is shown for comparison, not fused as another sensor.
+The filter retains unwrapped angles and checks innovations. It hides predictions
+older than 0.35 seconds or with angle standard deviation above 10 degrees.
+
+The default input is `unconstrained`: saved independent visual poses, including
+poses rejected by the mechanical fit. Therefore longer overlay coverage does
+not establish restored mechanical validity. To isolate what the filter does
+using only accepted mechanical poses, use a separate output:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\fuse_motion.py --results .\out\real_separated_recovered\results.json --output .\out\real_fused_mechanical_only --measurement-source mechanical
+```
+
+Tune `--measurement-std-deg` (default 1.5), `--accel-noise-deg-s2` (180),
+`--max-prediction-s` (0.35), and `--max-angle-std-deg` (10) for experiments.
+The visual noise estimate is increased by out-of-plane tilt and shell-roll
+disagreement; these are heuristics. The displayed uncertainty assumes the
+saved geometry and chosen noise parameters. It does not include unknown
+calibration bias or correlated tracking drift. This is a causal filter with
+no new pixel fitting or backward smoothing; it cannot verify complete turns
+during missing observations. Reacquisition after a stale gap starts a new
+velocity segment and is explicitly flagged.
+
+`results.json`, `results.csv`, and `fusion_report.json` contain statuses,
+prediction ages, uncertainty, rejection/reinitialization flags, source
+provenance, and original mechanical validity. These results have a separate
+experimental schema: use `visualize_fused_axes.py`, not `simulate_measured.py`.
+Source results and calibration are preserved.
+
+## Recovering tracking continuity and checking accuracy
+
+Set `temporal.motion_recovery_enabled: true` to use timestamped angular-motion
+predictions as search seeds for actual image matching. The recovery bank keeps
+up to eight accepted reference views for ten seconds. A prediction can help
+find a reference again, but cannot make a missing pose valid by itself.
+Recovery requires forward/backward optical flow, agreement of locally warped
+texture patches, spatially distinct support, and the existing rotation gates.
+The ordinary tracking path remains the default when this option is omitted.
+
+Optional settings under `temporal` are `recovery_bank_size` (8),
+`recovery_bank_age_s` (10), `motion_prediction_horizon_s` (0.5),
+`recovery_max_hypotheses` (3), and `recovery_patch_similarity` (0.8).
+The prediction horizon limits extrapolation for image searches. It is distinct
+from the postprocessing Kalman filter's display horizon.
+
+The current comparison uses a separate copy of the configuration with recovery
+enabled. Reproduce the tracking and filtered overlay with:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run.py --config .\out\continuity_experiment\recovery_config.yaml --output-dir .\out\continuity_experiment\tracked --no-overlay
+.\.venv\Scripts\python.exe .\scripts\fuse_motion.py --results .\out\continuity_experiment\tracked\results.json --output .\out\continuity_experiment\fused
+.\.venv\Scripts\python.exe .\scripts\visualize_fused_axes.py --results .\out\continuity_experiment\fused\results.json
+```
+
+Two separate checks accompany the overlay:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\validate_geometry.py --config .\out\continuity_experiment\recovery_config.yaml --results .\out\continuity_experiment\tracked\results.json --output .\out\continuity_experiment\geometry_after
+.\.venv\Scripts\python.exe .\scripts\validate_tracking.py --baseline .\out\real_fused\results.json --candidate .\out\continuity_experiment\fused\results.json --config .\config.yaml --sanity-exclusion-px 4 --output .\out\continuity_experiment\validation
+.\.venv\Scripts\python.exe .\scripts\compare_tracking_runs.py --baseline .\out\real_fused\results.json --candidate .\out\continuity_experiment\fused\results.json --validation .\out\continuity_experiment\validation\validation_report.json --geometry .\out\continuity_experiment\geometry_after\geometry_validation_report.json --output .\out\continuity_experiment\comparison
+```
+
+`validate_geometry.py` fits bounded changes to the normalized pivot, initial
+axis frame, and gap on some saved landmark transfers, then checks other frame
+pairs and landmark IDs. It re-decomposes the original camera rotations for
+each candidate frame. A candidate must pass pixel-agreement, support,
+physical-projection, observability, and held-out improvement gates. Rejection
+returns exit code 2 with a report and illustrated evidence. A passing candidate
+only creates a separate `candidate_config.yaml`; it still needs a fresh pixel
+refit and repeated validation. The main config is never changed. The source
+poses came from the same video, so this checks conditional model consistency,
+not independently known angular accuracy.
+
+To compare a later refit against exactly the same geometry evidence, add
+`--evidence <previous geometry_validation_report.json> --evaluate-only`.
+This preserves the source/target pixels and the training/held-out partition;
+missing required pose endpoints are reported rather than silently replaced by
+easier frames. Use `--pose-source mechanical` to require accepted constrained
+poses instead of the default preserved unconstrained poses.
+
+`validate_tracking.py` finds fresh image correspondences without either pose
+prediction and scores both trajectories against the exact same observations.
+Its primary set excludes corners within 30 pixels of saved training points at
+both endpoints. The optional smaller-exclusion set is explicitly a sanity
+check with overlapping patches. Unavailable poses and impossible projections
+remain in the coverage denominator; errors on support shared by both methods
+are reported separately. The tool exports observed/predicted point images and
+`validation_observations.json`, reusable with `--observations` for comparisons.
+Unsaved training pixels, shared pyramid context, and possible matching errors
+prevent these checks from being independent ground truth.
+
+Use `--known-angles reference.csv` when independently measured angles are
+available. Both trajectories are evaluated using one fixed reference frame.
+CSV columns are `frame_index` (or `time_s`), `alpha_deg`, `beta_top_deg`, and
+`beta_bottom_deg`, using the baseline's saved effective initial-frame convention.
+No angle measurements are fabricated when this file is absent. A smooth axis,
+a low filter covariance, or low image error alone does not establish absolute
+orientation accuracy or the number of full turns during an unobserved gap.
+
+The current `continuity_experiment` rerun does **not** demonstrate an overall
+improvement. Top raw visual support increased from 132 to 402 frames, but the
+long-gap reconnection near 10.224 s disagrees with the bottom shell's roll by
+roughly 46 degrees even after accounting for full turns. The complete top
+orientation has only 133 frames with both coordinates vision-updated, versus
+132 previously; shared-roll vision updates fall from 433 to 361. Recovery
+therefore remains opt-in. A long-gap match needs corroboration from another
+reference or compatible physical evidence before it should be trusted.
+
+The separate `validation_uniform` check samples 40 frame pairs across the
+clip. Projection coverage fell from 39.15% to 37.40%; on the same 720 projectable
+points, median error rose from 1.597 to 1.660 pixels. The geometry candidate
+also failed its agreement gates, so the main calibration is unchanged. Open
+`out/continuity_experiment/comparison/comparison.html` for coverage, both image
+checks, and links to the new overlay. The comparison command accepts
+`--additional-validation .\out\continuity_experiment\validation_uniform\validation_report.json`
+to include that broader check. Its exact matched pixels and frame pairs are
+preserved in `validation_uniform/validation_observations.json` for reuse with
+the validator's `--observations` argument.
 
 ## Recording advice
 

@@ -277,7 +277,8 @@ def run_pipeline(
                 matrix, sphere_center, sphere_radius, circle[2], klt_config,
                 solver_options, temporal_options,
                 seed=int(estimate_values.get("random_seed", 7)) + offset + 1)
-            temporal_trackers[name].initialize(gray, previous_masks[name], *tracker.points(name))
+            temporal_trackers[name].initialize(
+                gray, previous_masks[name], *tracker.points(name), timestamp_s=first_record.timestamp_s)
         if collector is not None:
             collector.push(0, gray, previous_masks,
                            {name: tracker.points(name) for name in temporal_trackers},
@@ -330,7 +331,7 @@ def run_pipeline(
                 for name, increments in (("top", top_increments), ("bottom", bottom_increments)):
                     pose, valid, diagnostic = temporal_trackers[name].update(
                         logical_index, gray, current_masks[name], matches[name], estimates[name],
-                        *tracker.points(name))
+                        *tracker.points(name), timestamp_s=record.timestamp_s)
                     # A recovered absolute pose spans a gap; it is not a measured
                     # one-frame increment and must not enter axis calibration.
                     increments.append(pose @ absolute_history[name][-1].T

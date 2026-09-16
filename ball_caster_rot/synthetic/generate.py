@@ -407,16 +407,18 @@ class RenderConfig:
     degradations: Degradations = field(default_factory=Degradations)
     frame_prefix: str = "frame_"
     image_extension: str = ".png"
-    # Physical rim-plane separation divided by sphere diameter. The two
-    # rigid caps share one centre; the removed equatorial band is not a
-    # screen-space margin or a translation fitted independently per shell.
+    # Physical rim-plane separation divided by sphere diameter. Geometry
+    # distinguishes truncated caps from complete hemispheres translated apart.
     gap_fraction: float = 0.0
+    geometry: str = "common_sphere_caps"
     _front_normals: Array | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.gap_fraction) or not 0.0 <= self.gap_fraction < 1.0:
             raise ValueError("gap_fraction must be finite and in [0, 1)")
-        if self.gap_fraction > 0.0:
+        if self.geometry not in ("common_sphere_caps", "separated_hemispheres"):
+            raise ValueError("unknown shell geometry")
+        if self.gap_fraction > 0.0 and self.geometry == "common_sphere_caps":
             object.__setattr__(self, "_front_normals", _front_surface_normals(self.camera))
         if self.num_speckles < 20:
             raise ValueError("num_speckles must be at least 20")
@@ -517,6 +519,27 @@ def _apply_cap_gap(image: Array, config: RenderConfig, alpha: float) -> None:
     image[gap] = np.asarray(config.background_color_bgr, dtype=np.uint8)
 
 
+def _hemisphere_depth(camera: CameraSetup, orientation: Array, sign: int, gap: float) -> Array:
+    """Front visible depth of a translated complete hemisphere at every pixel.
+
+    The front root of the parent sphere is accepted only on the shell's
+    outward hemisphere. Missing surfaces have infinite depth, allowing the two
+    independently textured shells to occlude each other correctly.
+    """
+    height, width = camera.image_size
+    yy, xx = np.mgrid[:height, :width]
+    rays = np.stack([xx, yy, np.ones_like(xx)], axis=-1) @ np.linalg.inv(camera.K).T
+    center = camera.C + sign * camera.radius * gap * orientation[:, 2]
+    ray_norm2 = np.sum(rays * rays, axis=-1)
+    ray_center = rays @ center
+    discriminant = ray_center**2 - ray_norm2 * (center @ center - camera.radius**2)
+    distance = (ray_center - np.sqrt(np.maximum(discriminant, 0.0))) / ray_norm2
+    normals = (distance[..., None] * rays - center) / camera.radius
+    valid = ((discriminant >= 0.) & (distance > 0.)
+             & (sign * (normals @ orientation[:, 2]) >= -1e-10))
+    return np.where(valid, distance, np.inf)
+
+
 def _speckle_attributes(config: RenderConfig) -> tuple[Array, Array, Array, Array]:
     """Return points, radii, brightness scales, and a stable density mask."""
 
@@ -534,7 +557,8 @@ def _speckle_attributes(config: RenderConfig) -> tuple[Array, Array, Array, Arra
     keep_n = max(20, int(round(config.num_speckles * config.degradations.density_scale)))
     density_mask = np.zeros(config.num_speckles, dtype=bool)
     density_mask[order[:keep_n]] = True
-    density_mask &= np.abs(points[:, 2]) >= config.gap_fraction
+    if config.geometry == "common_sphere_caps":
+        density_mask &= np.abs(points[:, 2]) >= config.gap_fraction
     return points, radii, brightness, density_mask
 
 
@@ -557,11 +581,15 @@ def _draw_population(
     camera = config.camera
     if len(indices) == 0:
         return
+    center = camera.C
+    if config.geometry == "separated_hemispheres":
+        sign = 1 if points[indices[0], 2] >= 0 else -1
+        center = center + sign * camera.radius * config.gap_fraction * (camera.R_bc @ R_motion[:, 2])
     uv, facing = project(
         points[indices],
         R_motion,
         camera.R_bc,
-        camera.C,
+        center,
         camera.radius,
         camera.K,
     )
@@ -650,6 +678,26 @@ def _render_subframe(
     beta_bottom = _interpolate(trajectory.beta_bottom, frame_position)
     gamma_top = _interpolate(trajectory.gamma_top, frame_position)
     gamma_bottom = _interpolate(trajectory.gamma_bottom, frame_position)
+    if config.geometry == "separated_hemispheres":
+        motions = (_motion_matrix(alpha_top, beta_top, gamma_top),
+                   _motion_matrix(alpha_bottom, beta_bottom, gamma_bottom))
+        depths = [_hemisphere_depth(config.camera, config.camera.R_bc @ motion, sign,
+                                    config.gap_fraction)
+                  for motion, sign in zip(motions, (1, -1))]
+        image[:] = config.background_color_bgr
+        masks = [np.isfinite(depths[0]) & (depths[0] <= depths[1]),
+                 np.isfinite(depths[1]) & (depths[1] < depths[0])]
+        for motion, indices, colour, mask in zip(
+                motions, (top_indices, bottom_indices),
+                (config.top_color_bgr, config.bottom_color_bgr), masks):
+            layer = np.empty_like(image)
+            layer[:] = config.ball_color_bgr
+            _draw_population(layer, points, indices, radii, brightness, motion,
+                             colour, config, rng)
+            image[mask] = layer[mask]
+        _apply_glare(image, config)
+        image[~(masks[0] | masks[1])] = config.background_color_bgr
+        return image
     _draw_population(
         image,
         points,
@@ -715,7 +763,7 @@ def _render_frame(
             rng,
         ).astype(np.float64)
     image = np.clip(np.rint(accumulated / len(offsets)), 0, 255).astype(np.uint8)
-    if config.gap_fraction == 0.0:
+    if config.gap_fraction == 0.0 and config.geometry == "common_sphere_caps":
         _apply_glare(image, config)
     _apply_yoke(image, config)
     return image
@@ -793,6 +841,7 @@ def _ground_truth(
         "C": camera.C.tolist(),
         "radius": camera.radius,
         "gap_fraction": config.gap_fraction,
+        "geometry": config.geometry,
         "rim_plane_separation": 2.0 * camera.radius * config.gap_fraction,
         "circle": {"u0": camera.circle[0], "v0": camera.circle[1], "r_px": camera.circle[2]},
         "camera": {

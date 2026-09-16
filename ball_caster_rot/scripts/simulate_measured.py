@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 """Replay measured angles as motion and check them against the real clip.
 
-Three independent verifications are produced, weakest assumption first:
+Visual checks and a synthetic round-trip test are available:
 
 ``axes``
     Draws the calibrated ball axes and a ball-fixed graticule on the real
-    footage, rotated by the measured per-frame orientation.  If the measured
-    rotation is right the graticule stays glued to the surface: a speckle that
-    starts inside one cell stays inside it for the whole clip.  Sliding means
-    the rotation, the circle, or ``K`` is wrong.  This test uses no synthetic
-    model at all.
+    footage, rotated by the measured per-frame orientation. The graticule and
+    numbered probes are synthetic surface locations, not tracked paint marks.
+    Their motion can expose sliding, but agreement at the first frame does not
+    validate the calibration or fitted motion.
+
+``residuals``
+    Draws the actual saved feature pixels and their fitted predictions, with
+    residual arrows and persistent track IDs. Unaccepted candidate fits remain
+    explicitly labelled, including when their pixels fit but lack an anchor.
 
 ``replay``
     Renders the measured trajectory with the synthetic ball renderer using the
@@ -55,10 +59,11 @@ from ballrot.config import (
 from ballrot.io_frames import FrameSource
 from ballrot.pipeline import run_pipeline
 from ballrot.rotation import Rx, Rz
+from ballrot.shell_geometry import surface_camera
 from ballrot.sphere import sphere_pose_from_circle
 from synthetic.generate import CameraSetup, RenderConfig, Trajectory, render_sequence
 
-TESTS = ("axes", "replay", "roundtrip")
+TESTS = ("axes", "residuals", "replay", "roundtrip")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -114,6 +119,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1800,
         help="Speckle count for the synthetic replay (default: 1800)",
+    )
+    parser.add_argument(
+        "--max-residuals", type=int, default=100,
+        help="Maximum observed/predicted feature pairs per shell in residuals (default: 100)",
     )
     parser.add_argument(
         "--swap-shells",
@@ -204,12 +213,10 @@ def _probe_points(
     R_bc: np.ndarray, hemisphere: int, count: int = 14, seed: int = 12345,
     gap_fraction: float = 0.0,
 ) -> np.ndarray:
-    """Ball-fixed markers spread over the cap that faces the camera at t=0.
+    """Synthetic surface probes, not observed paint features or track IDs.
 
-    These are the decisive check: each marker is pinned to one point of the
-    physical shell, so if the measured rotation is right the marker stays on
-    the same speckle for the whole clip.  A marker that slides off its speckle
-    shows the error directly, in pixels, with no model in the loop.
+    Their relative motion can help inspect sliding, but their initial locations
+    are random and neither paint correspondence nor yoke visibility is tested.
     """
 
     if not np.isfinite(gap_fraction) or not 0.0 <= gap_fraction < 1.0:
@@ -235,8 +242,12 @@ def _draw_curve(
     radius: float,
     color: tuple[int, int, int],
     thickness: int = 1,
+    *,
+    sign: int = 1,
+    gap_fraction: float = 0.0,
+    geometry: str = "common_sphere_caps",
 ) -> None:
-    uv, visible = _project(ball_points @ R_total.T, K, C, radius)
+    uv, visible = _project_shell(ball_points, R_total, K, C, radius, sign, gap_fraction, geometry)
     for start in range(len(uv) - 1):
         if not (visible[start] and visible[start + 1]):
             continue
@@ -252,6 +263,18 @@ def _draw_curve(
             thickness,
             cv2.LINE_AA,
         )
+
+
+def _project_shell(ball_points, orientation, K, C, radius, sign, gap_fraction, geometry):
+    """Project the configured shell surface, including its moving center."""
+    points = surface_camera(ball_points, orientation, C, radius, sign, gap_fraction, geometry)
+    normals = np.asarray(ball_points) @ np.asarray(orientation).T
+    toward_camera = -points / np.maximum(np.linalg.norm(points, axis=-1, keepdims=True), 1e-12)
+    visible = (np.einsum("ij,ij->i", normals, toward_camera) > 0.05) & (points[:, 2] > 1e-9)
+    homogeneous = points @ np.asarray(K).T
+    uv = np.full((len(points), 2), np.nan)
+    uv[visible] = homogeneous[visible, :2] / homogeneous[visible, 2:3]
+    return uv, visible
 
 
 def _draw_axes(
@@ -345,7 +368,27 @@ def _mechanical_model(measured: dict) -> dict | None:
     gap = float(model.get("gap_fraction", 0.0))
     if not np.isfinite(gap) or not 0.0 <= gap < 1.0:
         raise ValueError("Saved mechanical gap_fraction must be finite and in [0, 1)")
-    return {**model, "gap_fraction": gap}
+    geometry = model.get("geometry", "common_sphere_caps")
+    if geometry not in ("common_sphere_caps", "separated_hemispheres"):
+        raise ValueError("Unsupported saved mechanical geometry")
+    pivot = _validated_pivot(model.get("pivot_camera"))
+    return {**model, "gap_fraction": gap, "geometry": geometry,
+            "pivot_camera": None if pivot is None else pivot.tolist()}
+
+
+def _validated_pivot(value) -> np.ndarray | None:
+    """A supplied pivot is expressed in shell-radius units, independently of K."""
+    if value is None:
+        return None
+    pivot = np.asarray(value, dtype=float)
+    if pivot.shape != (3,) or not np.all(np.isfinite(pivot)) or pivot[2] <= 1.0:
+        raise ValueError("pivot_camera must be a finite C/R vector with z > 1")
+    return pivot
+
+
+def _effective_pivot(model: dict | None, source_center: np.ndarray, radius: float) -> np.ndarray:
+    pivot = _validated_pivot((model or {}).get("pivot_camera"))
+    return np.asarray(source_center, dtype=float).copy() if pivot is None else radius * pivot
 
 
 def _validate_mechanical_poses(measured: dict) -> None:
@@ -370,6 +413,23 @@ def _validate_mechanical_poses(measured: dict) -> None:
 
 def _result_mechanical_model(config: dict, measured: dict) -> dict | None:
     model = _mechanical_model(measured)
+    if model is not None and "pivot_camera" in config.get("mechanical", {}):
+        requested = _validated_pivot(config["mechanical"]["pivot_camera"])
+        saved = _validated_pivot(model.get("pivot_camera"))
+        mismatch = ((requested is None) != (saved is None)
+                    or (requested is not None and saved is not None
+                        and not np.allclose(requested, saved, atol=1e-10, rtol=0.0)))
+        if mismatch:
+            raise ValueError(
+                "Config mechanical pivot_camera differs from the saved results; rerun "
+                "mechanical fitting before changing the rendered geometry."
+            )
+    if model is not None and "geometry" in config.get("mechanical", {}):
+        if config["mechanical"]["geometry"] != model["geometry"]:
+            raise ValueError(
+                "Config mechanical geometry differs from the saved results; rerun "
+                "mechanical fitting before changing the rendered geometry."
+            )
     if model is not None and "gap_fraction" in config.get("mechanical", {}):
         requested = float(config["mechanical"]["gap_fraction"])
         if not np.isclose(requested, model["gap_fraction"], atol=1e-10, rtol=0.0):
@@ -464,6 +524,107 @@ def _panel(image: np.ndarray, title: str, width: int) -> np.ndarray:
 # tests
 
 
+def _reprojection_entry(measured: dict, shell: str, frame_index: int) -> dict:
+    """Diagnostics retain original frame indices even when playback is strided."""
+    entries = (measured.get("mechanical") or {}).get("frames", {}).get(shell, [])
+    if 0 <= frame_index < len(entries) and entries[frame_index].get("frame_index") == frame_index:
+        return entries[frame_index]
+    return next((entry for entry in entries if entry.get("frame_index") == frame_index), {})
+
+
+def _diagnostic_text(image: np.ndarray, lines: list[tuple[str, tuple[int, int, int]]]) -> None:
+    for row, (message, color) in enumerate(lines):
+        y = 23 + 24 * row
+        scale = min(0.55, max(0.22, (image.shape[1] - 20) / max(1, len(message) * 10.0)))
+        (width, height), baseline = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
+        cv2.rectangle(image, (4, y - height - 4),
+                      (min(image.shape[1] - 1, width + 16), y + baseline + 3), (0, 0, 0), -1)
+        cv2.putText(image, message, (8, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
+
+
+def _draw_reprojection_frame(image: np.ndarray, measured: dict, position: int, max_points: int = 100) -> dict:
+    """Draw saved fit evidence without promoting candidate predictions to poses."""
+    frame_index = int(measured["frame_index"][position])
+    lines = [
+        (f"frame {frame_index}  t={measured['time_s'][position]:.3f}s  FEATURE REPROJECTION", (255, 255, 255)),
+        ("circle: observed -> cross: predicted | green: pixel inlier, red: outlier | ?: unanchored", (255, 255, 255)),
+    ]
+    summary = {}
+    for shell in ("top", "bottom"):
+        entry = _reprojection_entry(measured, shell, frame_index)
+        accepted = bool(_pose_validity(measured, shell)[position])
+        pairs = entry.get("reprojection") or []
+        usable = []
+        for point in pairs:
+            observed = np.asarray(point.get("observed_uv"), dtype=float)
+            predicted = np.asarray(point.get("predicted_uv"), dtype=float)
+            if observed.shape == predicted.shape == (2,) and np.all(np.isfinite([observed, predicted])):
+                usable.append((point, observed, predicted))
+        usable.sort(key=lambda item: int(item[0]["track_id"]))
+        selected = usable
+        if len(usable) > max_points:
+            selected = [usable[index] for index in np.linspace(0, len(usable) - 1, max_points, dtype=int)]
+        for point, observed, predicted in selected:
+            inlier = bool(point.get("inlier", False))
+            color = (60, 220, 60) if inlier else (50, 60, 245)
+            # Clip extreme candidate projections to OpenCV's safe integer range.
+            observed_px = tuple(np.rint(np.clip(observed, -1000000, 1000000)).astype(int))
+            predicted_px = tuple(np.rint(np.clip(predicted, -1000000, 1000000)).astype(int))
+            cv2.arrowedLine(image, observed_px, predicted_px, color, 1, cv2.LINE_AA, tipLength=0.2)
+            cv2.circle(image, observed_px, 4, color, 1, cv2.LINE_AA)
+            cv2.drawMarker(image, predicted_px, color, cv2.MARKER_CROSS, 7, 1, cv2.LINE_AA)
+            label = f"{shell[0].upper()}{point['track_id']}" + ("" if point.get("anchored", False) else "?")
+            label_at = (observed_px[0] + 5, observed_px[1] - 5)
+            cv2.putText(image, label, label_at, cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 0, 0), 2, cv2.LINE_AA)
+            cv2.putText(image, label, label_at, cv2.FONT_HERSHEY_SIMPLEX, 0.32, color, 1, cv2.LINE_AA)
+        reason = entry.get("reason", "no_saved_fit_diagnostics")
+        if not usable:
+            status = f"{shell}: NO SAVED PREDICTIONS | {reason}"
+        else:
+            state = "ACCEPTED" if accepted else "UNACCEPTED CANDIDATE"
+            inliers = sum(bool(point.get("inlier", False)) for point, _, _ in usable)
+            anchored = sum(bool(point.get("anchored", False)) for point, _, _ in usable)
+            status = (f"{shell}: {state} | {reason} | inliers {inliers}/{len(usable)}, "
+                      f"anchored {anchored}/{len(usable)}, shown {len(selected)}")
+        lines.append((status, (60, 220, 60) if accepted else (0, 200, 255)))
+        bridge = entry.get("bridge")
+        if isinstance(bridge, dict):
+            details = ", ".join(f"{key}={value}" for key, value in bridge.items()
+                                if isinstance(value, (str, int, float, bool)))
+            if details:
+                lines.append((f"{shell} bridge: {details}", (210, 210, 210)))
+        summary[shell] = {"accepted": accepted, "available": len(usable), "shown": len(selected), "reason": reason}
+    _diagnostic_text(image, lines)
+    return summary
+
+
+def _reprojection_overlay(
+    clip_path: Path, measured: dict, K: np.ndarray, dist: np.ndarray,
+    fps: float, destination: Path, codec: str, max_points: int = 100,
+) -> Path:
+    if max_points < 1:
+        raise ValueError("max_points must be positive")
+    wanted = {int(value): position for position, value in enumerate(measured["frame_index"])}
+    writer = None
+    source = FrameSource(clip_path, input_type="auto")
+    try:
+        for record in source:
+            position = wanted.get(int(record.index))
+            if position is None:
+                continue
+            frame = undistort_image(record.image, K, dist)
+            _draw_reprojection_frame(frame, measured, position, max_points)
+            if writer is None:
+                writer = _writer(destination, fps, (frame.shape[1], frame.shape[0]), codec)
+            writer.write(frame)
+    finally:
+        if writer is not None:
+            writer.release()
+    if writer is None:
+        raise ValueError("No requested measured frames were found in the clip")
+    return destination
+
+
 def _axes_overlay(
     clip_path: Path,
     measured: dict[str, np.ndarray],
@@ -481,10 +642,13 @@ def _axes_overlay(
 ) -> Path:
     _validate_mechanical_poses(measured)
     mechanical = _mechanical_model(measured)
+    C = _effective_pivot(mechanical, C, radius)
     gap = mechanical["gap_fraction"] if mechanical is not None else 0.0
+    geometry = mechanical["geometry"] if mechanical is not None else "common_sphere_caps"
+    cap_gap = gap if geometry == "common_sphere_caps" else 0.0
     wanted = {int(value): position for position, value in enumerate(measured["frame_index"])}
-    curves = {sign: _graticule(step_deg, sign, 60, gap) for sign in (1, -1)}
-    probes = {sign: _probe_points(R_bc, sign, 14, 12345, gap) for sign in (1, -1)}
+    curves = {sign: _graticule(step_deg, sign, 60, cap_gap) for sign in (1, -1)}
+    probes = {sign: _probe_points(R_bc, sign, 14, 12345, cap_gap) for sign in (1, -1)}
     alpha_top = measured["alpha_top_rad"]
     alpha_bottom = measured["alpha_bottom_rad"]
     beta_top = measured["beta_top_rad"]
@@ -510,13 +674,14 @@ def _axes_overlay(
                 writer = _writer(
                     destination, fps, (frame.shape[1], frame.shape[0]), codec
                 )
-            cv2.circle(
-                frame,
-                (int(round(circle[0])), int(round(circle[1]))),
-                int(round(circle[2])),
-                (200, 200, 200),
-                1,
-            )
+            if geometry == "common_sphere_caps":
+                cv2.circle(
+                    frame,
+                    (int(round(circle[0])), int(round(circle[1]))),
+                    int(round(circle[2])),
+                    (200, 200, 200),
+                    1,
+                )
             for shell, hemisphere, angles, color in (
                 (
                     "top",
@@ -539,8 +704,16 @@ def _axes_overlay(
                     continue
                 R_total = R_bc @ ball_rotation(*angles)
                 for curve in curves[hemisphere]:
-                    _draw_curve(frame, curve, R_total, K, C, radius, color)
-                uv, visible = _project(probes[hemisphere] @ R_total.T, K, C, radius)
+                    if geometry == "common_sphere_caps":
+                        _draw_curve(frame, curve, R_total, K, C, radius, color)
+                    else:
+                        _draw_curve(frame, curve, R_total, K, C, radius, color,
+                                    sign=hemisphere, gap_fraction=gap, geometry=geometry)
+                if geometry == "common_sphere_caps":
+                    uv, visible = _project(probes[hemisphere] @ R_total.T, K, C, radius)
+                else:
+                    uv, visible = _project_shell(probes[hemisphere], R_total, K, C, radius,
+                                                 hemisphere, gap, geometry)
                 for marker, (point, shown) in enumerate(zip(uv, visible)):
                     if not (shown and np.all(np.isfinite(point))):
                         continue
@@ -561,17 +734,15 @@ def _axes_overlay(
             _draw_missing_pose_notice(
                 frame, [shell for shell in ("top", "bottom") if not validity[shell][position]]
             )
-            cv2.putText(
-                frame,
-                f"frame {record.index}   cyan = top shell   magenta = bottom shell"
-                "   -- each numbered ring should stay on its own speckle",
-                (10, frame.shape[0] - 14),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (255, 255, 255),
-                1,
-                cv2.LINE_AA,
+            footer = (
+                f"frame {record.index}   cyan = top shell   magenta = bottom shell",
+                "Numbered rings: synthetic probes. See residuals for tracked features.",
             )
+            for row, label in enumerate(footer):
+                width = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, .6, 1)[0][0]
+                scale = .6 * min(1., max(1., frame.shape[1] - 20) / max(width, 1))
+                cv2.putText(frame, label, (10, frame.shape[0] - 34 + 20 * row),
+                            cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), 1, cv2.LINE_AA)
             writer.write(frame)
     finally:
         if writer is not None:
@@ -584,8 +755,10 @@ def _camera_setup(
     R_bc: np.ndarray,
     circle: tuple[float, float, float],
     image_size: tuple[int, int],
+    pivot_camera: Sequence[float] | None = None,
 ) -> CameraSetup:
     C, radius = sphere_pose_from_circle(*circle, K)
+    C = _effective_pivot({"pivot_camera": pivot_camera}, C, radius)
     return CameraSetup(
         image_size=image_size,
         K=np.asarray(K, dtype=float),
@@ -684,6 +857,17 @@ def _replay_video(
 DELTA_MAX_DEG_PER_FRAME = 5.0
 
 
+def _roundtrip_skip_reason(model: dict | None) -> str | None:
+    """The legacy raw-increment test has no translated-shell geometry model."""
+    if (model or {}).get("geometry", "common_sphere_caps") == "separated_hemispheres":
+        return ("Raw-increment roundtrip assumes a common sphere and cannot validate "
+                "separated hemispheres; use geometry-aware mechanical fit tests.")
+    if (model or {}).get("pivot_camera") is not None:
+        return ("Raw-increment roundtrip derives its center from the source circle and "
+                "cannot validate a mechanical pivot_camera override.")
+    return None
+
+
 def _step_size(trajectory: Trajectory) -> dict[str, Any]:
     """Per-frame rotation of the sequence that is about to be re-measured."""
 
@@ -714,9 +898,14 @@ def _roundtrip(
     config: dict[str, Any],
     fps: float,
     swap_shells: bool = False,
+    mechanical_model: dict | None = None,
 ) -> dict[str, Any]:
     """Re-measure a rendered sequence and compare against its own input."""
 
+    model = mechanical_model if mechanical_model is not None else config.get("mechanical")
+    reason = _roundtrip_skip_reason(model)
+    if reason is not None:
+        return {"status": "skipped", "reason": reason}
     segment_config = dict(config.get("segment", {}))
     # The renderer paints solid, well-separated speckle colours; reuse the
     # synthetic HSV ranges rather than the ranges tuned for real paint.
@@ -798,8 +987,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.stride < 1:
         raise SystemExit("--stride must be at least 1")
+    if args.max_residuals < 1:
+        raise SystemExit("--max-residuals must be at least 1")
     if args.render_width is not None and (args.render_width < 64 or "roundtrip" in args.tests):
-        raise SystemExit("--render-width must be >=64 and is for axes/replay only; omit it for roundtrip")
+        raise SystemExit("--render-width must be >=64 and is for visual playback only; omit it for roundtrip")
     config, config_path = load_config(args.config)
     output_root = resolve_from_config(config_path, config.get("output", {}).get("dir", "out/real"))
     results_path = args.results or output_root / "results.json"
@@ -821,6 +1012,8 @@ def main(argv: list[str] | None = None) -> int:
     swap_shells = (top_shell_sign == -1) != args.swap_shells
     fps = float(metadata["fps"]) / max(1, args.stride)
     C, radius = sphere_pose_from_circle(*circle, K)
+    C = _effective_pivot(mechanical, C, radius)
+    roundtrip_skip = _roundtrip_skip_reason(mechanical)
 
     probe = FrameSource(clip_path, input_type="auto", max_frames=1)
     first = next(iter(probe))
@@ -836,19 +1029,38 @@ def main(argv: list[str] | None = None) -> int:
         "initial_roll_deg": metadata.get("initial_roll_deg", 0.0),
         "top_shell_sign": -1 if swap_shells else 1,
         "mechanical_model": mechanical,
+        "pivot_camera": (C / radius).tolist(),
+        "pivot_source": "saved_mechanical_override" if mechanical is not None and mechanical.get("pivot_camera") is not None else "source_circle",
+        "surface_geometry": mechanical["geometry"] if mechanical is not None else "common_sphere_caps",
         "pose_source": "mechanical_fit" if mechanical is not None else "independent_shell_estimates",
         "mechanical_note": (
-            "Both caps share roll and have independent swivel/spin. Their rim planes "
+            "Both shells share roll and have independent swivel/spin. Their rim planes "
             "remain separated by gap_fraction times the sphere diameter in 3D; "
             "the apparent image gap changes with view. This geometric consistency "
             "does not establish measurement accuracy."
             if mechanical is not None else None
+        ),
+        "geometry_note": (
+            "Complete hemispheres have centers offset by +/-radius*gap_fraction along the rotated spin axis."
+            if mechanical is not None and mechanical["geometry"] == "separated_hemispheres" else
+            "Both shell caps lie on a common sphere; a nonzero gap excludes a band around its equator."
+        ),
+        "calibration_note": (
+            "Camera, reference center/radius and initial calibrated axes are fixed inputs. "
+            "Axes lines show that initial frame. Grids and numbered probes are synthetic surface "
+            "locations, not observed feature IDs or independent accuracy measurements."
         ),
         "fit_method": (measured.get("mechanical") or {}).get("method"),
         "timing_note": "Videos use constant-rate diagnostic playback; result time_s contains measurement timestamps.",
         "tracking_note": (
             "Unresolved shell poses have no moving grid or probes in the axes overlay. "
             "Replay explicitly labels display fallbacks across missing poses; these are not measurements."
+        ),
+        "reprojection_note": (
+            "Residuals use saved observed and predicted feature pixels in the undistorted image. "
+            "Persistent track IDs identify source observations. Pixel inliers may still belong to an "
+            "unaccepted or unanchored candidate; frame labels and question marks distinguish these. "
+            "Missing predictions are not extrapolated."
         ),
         "unresolved_frames": {
             shell: int(np.count_nonzero(~_pose_validity(measured, shell)))
@@ -874,20 +1086,28 @@ def main(argv: list[str] | None = None) -> int:
             swap_shells=swap_shells,
         )
 
+    if "residuals" in args.tests:
+        print("residuals: drawing saved observed and predicted feature pixels ...")
+        written["reprojection_overlay"] = _reprojection_overlay(
+            clip_path, measured, K, dist, fps, output_dir / "reprojection_overlay.mp4",
+            args.codec, args.max_residuals,
+        )
+
     rendered: dict[str, list[np.ndarray]] = {}
     model_trajectory, full_trajectory = _trajectories(measured, fps, swap_shells)
     full_label = (
         "simulated: mechanically constrained fit" if mechanical is not None
         else "simulated: full measured orientation"
     )
-    if {"replay", "roundtrip"} & set(args.tests):
+    if "replay" in args.tests or ("roundtrip" in args.tests and roundtrip_skip is None):
         render_K, render_circle, render_size = K, circle, image_size
         if args.render_width is not None:
             scale = args.render_width / image_size[1]
             render_K = np.diag([scale, scale, 1.0]) @ K
             render_circle = tuple(value * scale for value in circle)
             render_size = (int(round(image_size[0] * scale)), args.render_width)
-        setup = _camera_setup(render_K, R_bc, render_circle, render_size)
+        setup = _camera_setup(render_K, R_bc, render_circle, render_size,
+                              pivot_camera=(mechanical or {}).get("pivot_camera"))
         defaults = RenderConfig()
         render_config = RenderConfig(
             camera=setup,
@@ -897,6 +1117,7 @@ def main(argv: list[str] | None = None) -> int:
             top_color_bgr=defaults.bottom_color_bgr if swap_shells else defaults.top_color_bgr,
             bottom_color_bgr=defaults.top_color_bgr if swap_shells else defaults.bottom_color_bgr,
             gap_fraction=mechanical["gap_fraction"] if mechanical is not None else 0.0,
+            geometry=mechanical["geometry"] if mechanical is not None else "common_sphere_caps",
         )
         trajectories = [(full_label, full_trajectory)]
         if mechanical is None:
@@ -919,10 +1140,15 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if "roundtrip" in args.tests:
+        if roundtrip_skip is not None:
+            report["roundtrip"] = {"status": "skipped", "reason": roundtrip_skip}
+            print(f"roundtrip: skipped. {roundtrip_skip}")
+    if "roundtrip" in args.tests and roundtrip_skip is None:
         print("roundtrip: re-measuring the rendered sequence ...")
         report["roundtrip"] = _roundtrip(
             rendered[full_label], full_trajectory, K, circle, R_bc, config, fps,
             swap_shells=swap_shells,
+            mechanical_model=mechanical or {"geometry": "common_sphere_caps"},
         )
         summary = report["roundtrip"]
         print(

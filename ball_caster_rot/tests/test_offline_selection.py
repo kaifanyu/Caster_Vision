@@ -6,6 +6,45 @@ import numpy as np
 from ballrot.offline import OfflineConfig, SurfaceObservation, _select_observations
 
 
+def test_known_material_points_can_be_reobserved_in_one_image():
+    points = np.array([(x, y) for x in range(4) for y in range(4)], dtype=float)
+    observations = [SurfaceObservation(12, i, point) for i, point in enumerate(points)]
+    config = OfflineConfig()
+    assert _select_observations(observations, config) == []
+    selected = _select_observations(observations, config, known_track_ids=set(range(16)))
+    assert len(selected) == 16
+    assert {e.track_id for e in selected} == set(range(16))
+
+
+def test_known_map_connections_receive_budget_with_many_new_templates():
+    points = np.array([(x*20., y*20.) for x in range(6) for y in range(6)])
+    observations = [SurfaceObservation(frame, i, point, 1.)
+                    for frame in range(3) for i, point in enumerate(points)]
+    observations += [SurfaceObservation(frame, 100+j, point, 2.)
+                     for frame in range(3) for j, point in enumerate(points)]
+    chosen = _select_observations(observations, OfflineConfig(max_tracks_per_frame=24),
+                                  known_track_ids=set(range(36)))
+    for frame in range(3):
+        local = [e for e in chosen if e.frame_index == frame]
+        assert len(local) <= 24
+        assert sum(e.track_id < 36 for e in local) >= 12
+
+
+def test_direct_map_priority_does_not_spend_the_adjacent_reservation():
+    points = np.array([(x*20., y*20.) for x in range(10) for y in range(10)])
+    observations = [SurfaceObservation(frame, i, point, 1.)
+                    for frame in range(3) for i, point in enumerate(points[:50])]
+    observations += [SurfaceObservation(frame, 100+i, point, 2.)
+                     for frame in range(3) for i, point in enumerate(points)]
+    chosen = _select_observations(observations, OfflineConfig(max_tracks_per_frame=100),
+                                  known_track_ids=set(range(100, 200)))
+    for frame in range(3):
+        local = [e for e in chosen if e.frame_index == frame]
+        assert len(local) <= 100
+        assert sum(e.weight <= 1. for e in local) >= 24
+        assert sum(e.track_id >= 100 for e in local) >= 24
+
+
 def interleaved_tracks():
     pixels = np.array([(x, y) for x in np.linspace(200, 400, 8)
                        for y in np.linspace(100, 300, 8)])

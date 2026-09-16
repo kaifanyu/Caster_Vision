@@ -20,6 +20,7 @@ from .estimate import (
     prepare_sphere_correspondences, solve_hemisphere_increment,
 )
 from .rotation import geodesic_angle
+from .motion_recovery import RotationMotionPrior, ViewReferenceBank, sphere_patch_affines, verify_patch_matches
 from .segment import SegmentationMasks
 from .track import KLTConfig, TrackMatches, track_features
 
@@ -41,12 +42,20 @@ class TemporalConfig:
     max_correction_deg: float = 5.0
     max_anchor_disagreement_deg: float = 3.0
     boundary_margin_px: int = 3
+    motion_recovery_enabled: bool = False
+    recovery_bank_size: int = 8
+    recovery_bank_age_s: float = 10.0
+    motion_prediction_horizon_s: float = 0.5
+    recovery_max_hypotheses: int = 3
+    recovery_patch_similarity: float = 0.8
 
     def __post_init__(self) -> None:
-        if not isinstance(self.enabled, bool):
-            raise ValueError("temporal.enabled must be boolean")
+        for name in ("enabled", "motion_recovery_enabled"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"temporal.{name} must be boolean")
         for name in ("correction_interval", "keyframe_interval", "max_keyframes",
-                     "max_keyframe_age", "min_inliers", "boundary_margin_px"):
+                     "max_keyframe_age", "min_inliers", "boundary_margin_px",
+                     "recovery_bank_size", "recovery_max_hypotheses"):
             value = getattr(self, name)
             floor = 0 if name == "boundary_margin_px" else 1
             if isinstance(value, bool) or not isinstance(value, int) or value < floor:
@@ -56,12 +65,13 @@ class TemporalConfig:
         for name in ("min_inlier_ratio", "min_spread_fraction", "min_sharpness_ratio",
                      "keyframe_sharpness_ratio", "max_residual_deg",
                      "max_keyframe_rotation_deg", "max_correction_deg",
-                     "max_anchor_disagreement_deg"):
+                     "max_anchor_disagreement_deg", "recovery_bank_age_s",
+                     "motion_prediction_horizon_s", "recovery_patch_similarity"):
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0:
                 raise ValueError(f"temporal.{name} must be finite and positive")
         for name in ("min_inlier_ratio", "min_spread_fraction", "min_sharpness_ratio",
-                     "keyframe_sharpness_ratio"):
+                     "keyframe_sharpness_ratio", "recovery_patch_similarity"):
             if getattr(self, name) > 1:
                 raise ValueError(f"temporal.{name} must be <= 1")
 
@@ -133,6 +143,7 @@ class Keyframe:
     directions: np.ndarray
     pose: np.ndarray
     sharpness: float
+    timestamp_s: float | None = None
 
 
 class TemporalRotationTracker:
@@ -152,6 +163,10 @@ class TemporalRotationTracker:
         self.keyframes: list[Keyframe] = []
         self.recovery_keyframe: Keyframe | None = None
         self.history: list[dict[str, Any]] = []
+        self._timestamp_s = None
+        self.motion_prior = RotationMotionPrior(config.motion_prediction_horizon_s)
+        self.reference_bank = ViewReferenceBank(config.recovery_bank_size, config.recovery_bank_age_s,
+                                               max(2., config.max_keyframe_rotation_deg/3))
         # Consumed immediately by optional offline processing; images are not
         # retained in the trajectory history.
         self.last_anchor_observations: list[tuple[Keyframe, TrackMatches, HemisphereEstimate]] = []
@@ -165,7 +180,7 @@ class TemporalRotationTracker:
             return None
         return Keyframe(index, gray.copy(), mask.copy(), uv[keep].copy(),
                         ids[keep].copy(), geometry.dirs_prev[keep].copy(),
-                        self.pose.copy(), sharpness)
+                        self.pose.copy(), sharpness, self._timestamp_s)
 
     def _add_keyframe(self, index, gray, mask, uv, ids, sharpness) -> None:
         key = self._make_keyframe(index, gray, mask, uv, ids, sharpness)
@@ -174,11 +189,28 @@ class TemporalRotationTracker:
         self.keyframes.append(key)
         self.keyframes = self.keyframes[-self.config.max_keyframes:]
 
-    def initialize(self, gray, mask, uv, ids) -> None:
+    def _timestamp(self, timestamp_s):
+        if not self.config.motion_recovery_enabled:
+            # The legacy pipeline owns its timestamp/fallback policy. Merely
+            # supplying metadata must not add a new validation requirement.
+            self._timestamp_s = float(timestamp_s) if timestamp_s is not None and np.isfinite(timestamp_s) else None
+            return
+        if timestamp_s is None:
+            raise ValueError("motion recovery requires actual, finite, strictly increasing timestamps")
+        if (not np.isfinite(timestamp_s) or
+                (self._timestamp_s is not None and timestamp_s <= self._timestamp_s)):
+            raise ValueError("motion recovery requires finite, strictly increasing timestamps")
+        self._timestamp_s = float(timestamp_s)
+
+    def initialize(self, gray, mask, uv, ids, *, timestamp_s=None) -> None:
+        self._timestamp(timestamp_s)
         sharpness = image_sharpness(gray, mask)
         self.recent_sharpness.append(sharpness)
         self._add_keyframe(0, gray, mask, uv, ids, sharpness)
         self.recovery_keyframe = self.keyframes[-1] if self.keyframes else None
+        if self.config.motion_recovery_enabled:
+            self.motion_prior.observe(self._timestamp_s, self.pose)
+            self.reference_bank.add(self.recovery_keyframe)
         self.history.append({"frame_index": 0, "status": "initial", "valid": True,
                              "keyframes": [key.index for key in self.keyframes]})
 
@@ -196,11 +228,19 @@ class TemporalRotationTracker:
                 guesses[i] = known[int(identifier)]
         direct = track_features(key.gray, gray, key.uv, prev_mask=key.mask,
                                 curr_mask=mask, config=self.klt, initial_uv_curr=guesses)
+        original_count = direct.count
+        if self.config.motion_recovery_enabled:
+            affines = sphere_patch_affines(direct.uv_prev, self.K, self.center, self.radius, relative)
+            direct = verify_patch_matches(direct, key.gray, gray, self.config.recovery_patch_similarity,
+                                          affines=affines)
         estimate = solve_hemisphere_increment(
             direct.uv_prev, direct.uv_curr, self.K, self.center, self.radius,
             rng=self.rng, **self.solver_options)
         quality = estimate_quality(direct, estimate, self.radius_px, self.config)
         quality["keyframe"] = key.index
+        if self.config.motion_recovery_enabled:
+            quality["appearance_input_matches"] = original_count
+            quality["appearance_verified_matches"] = direct.count
         if estimate.success:
             angle = float(np.rad2deg(geodesic_angle(estimate.R, np.eye(3))))
             quality["rotation_deg"] = angle
@@ -211,8 +251,15 @@ class TemporalRotationTracker:
 
     def update(self, index: int, gray: np.ndarray, mask: np.ndarray,
                matches: TrackMatches, estimate: HemisphereEstimate,
-               uv: np.ndarray, ids: np.ndarray) -> tuple[np.ndarray, bool, dict[str, Any]]:
+               uv: np.ndarray, ids: np.ndarray, *, timestamp_s=None) -> tuple[np.ndarray, bool, dict[str, Any]]:
         cfg = self.config
+        self._timestamp(timestamp_s)
+        motion_prediction = None
+        prediction_age = None
+        if cfg.motion_recovery_enabled:
+            self.reference_bank.expire(self._timestamp_s)
+            motion_prediction = self.motion_prior.predict(self._timestamp_s)
+            prediction_age = self.motion_prior.age(self._timestamp_s)
         self.last_anchor_observations = []
         previous_valid = self.valid
         sharpness = image_sharpness(gray, mask)
@@ -246,14 +293,43 @@ class TemporalRotationTracker:
             if ((not adjacent_good or not previous_valid) and rescue is not None
                     and all(key.index != rescue.index for key in anchors)):
                 anchors.append(rescue)
+            recovering = cfg.motion_recovery_enabled and (not adjacent_good or not previous_valid)
+            if recovering:
+                available = {key.index: key for key in (*anchors, *self.reference_bank.frames)
+                             if key.timestamp_s is not None
+                             and self._timestamp_s-key.timestamp_s <= cfg.recovery_bank_age_s}
+                hints = [prediction] if motion_prediction is None else [prediction, motion_prediction]
+                ranked = sorted(available.values(), key=lambda key: (
+                    0 if rescue is not None and key.index == rescue.index else 1,
+                    min(geodesic_angle(key.pose, hint) for hint in hints), -key.index))
+                anchors = ranked[:cfg.max_keyframes+1]
             for key in anchors:
-                if index - key.index > cfg.max_keyframe_age:
+                if not recovering and index - key.index > cfg.max_keyframe_age:
                     continue
-                direct, anchor_estimate, anchor_quality = self._observe(
-                    key, gray, mask, prediction, uv, ids)
-                attempts.append(anchor_quality)
-                if anchor_quality["accepted"]:
-                    pose = anchor_estimate.R @ key.pose
+                seeds = [("visual_increment", prediction, ids)]
+                if recovering:
+                    seeds = ([] if motion_prediction is None else [("angular_velocity", motion_prediction, [])])
+                    seeds.extend([("visual_increment", prediction, ids), ("reference_view", key.pose, [])])
+                    seeds = seeds[:cfg.recovery_max_hypotheses]
+                candidates = []
+                for method, seed, seed_ids in seeds:
+                    direct, anchor_estimate, anchor_quality = self._observe(
+                        key, gray, mask, seed, uv, seed_ids)
+                    if cfg.motion_recovery_enabled:
+                        anchor_quality["prediction_hypothesis"] = method
+                    attempts.append(anchor_quality)
+                    if anchor_quality["accepted"]:
+                        candidates.append((direct, anchor_estimate, anchor_quality, anchor_estimate.R @ key.pose))
+                if candidates:
+                    ambiguity = max((geodesic_angle(a[3], b[3]) for a in candidates for b in candidates), default=0.)
+                    if np.rad2deg(ambiguity) > cfg.max_anchor_disagreement_deg:
+                        for _, _, candidate_quality, _ in candidates:
+                            candidate_quality["accepted"] = False
+                            candidate_quality["reasons"].append("image-search hypotheses disagree")
+                        contested = True
+                        continue
+                    direct, anchor_estimate, anchor_quality, pose = max(candidates, key=lambda item: (
+                        item[1].inlier_count, -item[1].mean_inlier_residual_deg))
                     if candidate is not None:
                         correction = float(np.rad2deg(geodesic_angle(pose, prediction)))
                         if correction > cfg.max_correction_deg:
@@ -326,6 +402,9 @@ class TemporalRotationTracker:
             self.recovery_keyframe = (self.keyframes[-1]
                                       if self.keyframes and self.keyframes[-1].index == index
                                       else self._make_keyframe(index, gray, mask, uv, ids, sharpness))
+            if cfg.motion_recovery_enabled:
+                self.motion_prior.observe(self._timestamp_s, self.pose)
+                self.reference_bank.add(self.recovery_keyframe)
         record = {
             "frame_index": index, "status": status, "valid": self.valid,
             "adjacent": quality, "sharpness": sharpness, "sharpness_ratio": sharpness_ratio,
@@ -336,6 +415,13 @@ class TemporalRotationTracker:
             "keyframe_promotion_blocked": contested,
             "recovery_keyframe": self.recovery_keyframe.index if self.recovery_keyframe else None,
         }
+        if cfg.motion_recovery_enabled:
+            record["motion_recovery"] = {
+                "timestamp_s": self._timestamp_s, "motion_prediction_available": motion_prediction is not None,
+                "prediction_age_s": prediction_age,
+                "reference_bank_frames": [key.index for key in self.reference_bank.frames],
+                "hypothesis_attempts": len(attempts), "prediction_is_measurement": False,
+            }
         self.history.append(record)
         return self.pose.copy(), self.valid, record
 

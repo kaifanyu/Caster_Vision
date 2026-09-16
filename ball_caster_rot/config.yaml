@@ -130,11 +130,16 @@ offline:
   rate_polynomial_order: 2
 mechanical:
   enabled: true
+  # Two complete hemispheres; centers move by +/- half the gap with roll.
+  geometry: separated_hemispheres
+  # Optional calibrated assembly pivot / shell curvature radius. Until calibrated,
+  # use the original enclosing-circle seed; calibrate_shell_geometry.py can set it.
+  pivot_camera: null
   gap_fraction: 0.1
   window_frames: 60
   overlap_frames: 20
 frame_calib:
-  initial_roll_deg: 0.0
+  initial_roll_deg: 6.5
   R_bc:
   - - -0.010130905684456064
     - 0.9999385029791771

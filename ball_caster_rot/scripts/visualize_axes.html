@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Measured caster axes across time</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101820;color:#e6edf3;font:16px system-ui,sans-serif}
+main{max-width:1140px;margin:auto;padding:26px}h1{font-size:28px;margin:0 0 8px}p{line-height:1.5;color:#b9c8d3}
+.controls{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin:18px 0}button{background:#263b4b;border:1px solid #526979;border-radius:6px;color:white;padding:8px 14px;cursor:pointer}
+input[type=range]{flex:1;min-width:200px;accent-color:#ffab4b}label{font-size:14px}svg{display:block;width:100%;max-height:72vh;background:#080c11;border-radius:8px}
+.status{font-weight:600;padding:12px 0;color:#a9ebba}.bad{color:#ffc670}.legend{display:flex;gap:20px;flex-wrap:wrap;font-size:14px;margin:12px 0}
+.time{font-variant-numeric:tabular-nums;min-width:170px}.notes{font-size:14px}.foot{border-top:1px solid #344654;padding-top:12px}
+</style>
+<main>
+<h1>Current axes across the video</h1>
+<p>The green roll axis is fixed by calibration. The orange spin axis follows the measured shared roll. Missing motion remains unresolved.</p>
+<div class="legend"><span style="color:#67ed77">X · calibrated roll axis</span><span style="color:#ffab4b">Z · current spin axis</span><span style="color:#68b8ff">Y · current transverse axis</span></div>
+<div class="controls"><button id="prev">Previous</button><input id="time" aria-label="Video time sample" type="range" min="0" value="0"><button id="next">Next</button><span id="stamp" class="time"></span></div>
+<div class="controls"><label><input id="grid" type="checkbox" checked> Shell grids</label><label><input id="home" type="checkbox"> Dashed gray initial axes for comparison</label></div>
+<div id="status" class="status"></div>
+<svg id="scene" role="img" aria-label="Source video with projected mechanical axes"></svg>
+<p id="detail" class="notes"></p>
+<p class="notes foot">__GEOMETRY_NOTE__ Cyan and magenta grids appear only for accepted top and bottom poses. Grid positions are synthetic surface lines, not tracked paint. Displayed times are the saved source timestamps. Use the arrow keys or slider to change time.</p>
+</main>
+<script>
+const samples=__AXIS_DATA__, colors=__AXIS_COLORS__;
+const slider=document.getElementById('time'), scene=document.getElementById('scene');
+slider.max=samples.length-1;
+function arrow(a,dashed=false){
+ const color=dashed?'#d3d8de':colors[a.name],p=a.origin,q=a.end;
+ const x=Math.max(15,Math.min(q[0]+10,samples[+slider.value].size[0]-28));
+ const y=Math.max(22,Math.min(q[1]-10,samples[+slider.value].size[1]-15));
+ return `<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" stroke="${color}" stroke-width="${dashed?2:4}" ${dashed?'stroke-dasharray="8 7" opacity=".75"':`marker-end="url(#${a.name})"`}/>`+
+ (dashed?'':`<text x="${x}" y="${y}" fill="${color}" font-size="22" font-weight="700" stroke="#101820" stroke-width="4" paint-order="stroke">${a.name.toUpperCase()}</text>`);
+}
+function draw(){
+ const s=samples[+slider.value], supported=s.alpha_deg!==null;
+ scene.setAttribute('viewBox',`0 0 ${s.size[0]} ${s.size[1]}`);
+ let content='<defs>'+['x','y','z'].map(n=>`<marker id="${n}" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="${colors[n]}" stroke-width="1.5"/></marker>`).join('')+'</defs>';
+ content+=`<image href="${s.image}" width="${s.size[0]}" height="${s.size[1]}"/>`;
+ if(document.getElementById('grid').checked) content+=s.grids.map(g=>`<polyline points="${g.points.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${colors[g.shell]}" stroke-width="1.3" opacity=".7"/>`).join('');
+ if(document.getElementById('home').checked)content+=s.home.map(a=>arrow(a,true)).join('');
+ content+=s.axes.map(a=>arrow(a)).join('');scene.innerHTML=content;
+ document.getElementById('stamp').textContent=`${s.time.toFixed(3)} s · frame ${s.frame}`;
+ const status=document.getElementById('status'); status.className=supported?'status':'status bad';
+ status.textContent=supported?`Current spin axis supported by ${s.top&&s.bottom?'both shells':s.top?'the top shell only':'the bottom shell only'} · relative roll ${s.alpha_deg.toFixed(2)}°`:'No supported current spin axis — current Y/Z directions are unavailable';
+ document.getElementById('detail').textContent=`Top shell: ${s.top?'accepted':'unresolved'} · Bottom shell: ${s.bottom?'accepted':'unresolved'}. `+(supported?'Roll is relative to the initial frame, whose saved orientation includes the __INITIAL_ROLL__° offset.':'The missing Y/Z directions and shell poses are not interpolated or held from earlier frames.');
+}
+function step(d){slider.value=Math.max(0,Math.min(samples.length-1,+slider.value+d));draw();}
+slider.addEventListener('input',draw);document.getElementById('grid').addEventListener('change',draw);document.getElementById('home').addEventListener('change',draw);
+document.getElementById('prev').onclick=()=>step(-1);document.getElementById('next').onclick=()=>step(1);
+document.addEventListener('keydown',e=>{if(e.target===slider)return;if(e.key==='ArrowRight'){e.preventDefault();step(1);}if(e.key==='ArrowLeft'){e.preventDefault();step(-1);}});draw();
+</script></html>

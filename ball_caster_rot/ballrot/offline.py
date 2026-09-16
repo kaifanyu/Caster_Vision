@@ -135,7 +135,8 @@ def _summary(errors: np.ndarray) -> dict[str, float | None]:
             "p95_px": float(np.percentile(errors, 95))}
 
 
-def _select_observations(observations: list[SurfaceObservation], config: OfflineConfig):
+def _select_observations(observations: list[SurfaceObservation], config: OfflineConfig,
+                         *, known_track_ids=(), priority_track_ids=()):
     """Bound image budgets without severing the tracks supplying their evidence.
 
     Selecting every image independently can spend a keyframe's entire budget on
@@ -145,6 +146,8 @@ def _select_observations(observations: list[SurfaceObservation], config: Offline
     Frame and spatial-bin occupancy balance the admitted bundles; all pixel and
     pose quality checks still happen in the estimator after this selection.
     """
+    known_track_ids = set(known_track_ids)
+    priority_track_ids = set(priority_track_ids) | known_track_ids
     unique: dict[tuple[int, int], SurfaceObservation] = {}
     for observation in observations:
         key = (int(observation.frame_index), int(observation.track_id))
@@ -161,7 +164,7 @@ def _select_observations(observations: list[SurfaceObservation], config: Offline
                 tracks[entry.track_id] += 1
                 frames_count[entry.frame_index] += 1
             retained = [entry for entry in entries
-                        if tracks[entry.track_id] >= config.min_track_length
+                        if (entry.track_id in known_track_ids or tracks[entry.track_id] >= config.min_track_length)
                         and frames_count[entry.frame_index] >= config.min_observations_per_frame]
             if len(retained) == len(entries):
                 break
@@ -202,8 +205,8 @@ def _select_observations(observations: list[SurfaceObservation], config: Offline
                          if (entry.frame_index, identifier) not in chosen
                          and entry.frame_index not in blocked_frames
                          and counts[entry.frame_index] < limits[entry.frame_index]]
-            if (not available or selected_track_count[identifier] + len(available)
-                    < config.min_track_length):
+            if (not available or (identifier not in known_track_ids and
+                    selected_track_count[identifier] + len(available) < config.min_track_length)):
                 return 0., []
             # Divide by the original bundle size: removing an unavailable
             # observation cannot increase a stale heap priority. Prefer views
@@ -245,9 +248,16 @@ def _select_observations(observations: list[SurfaceObservation], config: Offline
     reserved_limits = {frame: reserve if has_direct[frame] else cap for frame in by_frame}
     full_limits = {frame: cap for frame in by_frame}
     while True:
+        # Keep the adjacent-track reservation independent of mapped/direct
+        # priority: an absolute frame limit already spent on direct tracks
+        # cannot reserve any adjacent observations afterward.
+        admit(adjacent_ids, reserved_limits)
+        # Preserve measured map/overlap connections before spending the rest
+        # of the image budget. Known 3D landmarks need no new three-image track.
+        priority_limits = {frame: max(reserve, cap // 2) for frame in by_frame}
+        admit(priority_track_ids & set(by_track), priority_limits)
         # Reserve connected adjacent tracks, then prefer independently matched
         # templates. Refill unused capacity with either surviving source.
-        admit(adjacent_ids, reserved_limits)
         admit(direct_ids, full_limits)
         admit(adjacent_ids, full_limits)
         retained = supported(chosen.values())
@@ -270,7 +280,7 @@ def _select_observations(observations: list[SurfaceObservation], config: Offline
     return sorted(chosen.values(), key=lambda entry: (entry.frame_index, entry.track_id))
 
 
-def _exclude_unsupported_invalid_frames(observations, valid, radius_px, config):
+def _exclude_unsupported_invalid_frames(observations, valid, radius_px, config, *, known_track_ids=()):
     """Do not let a missing pose prevent supported poses from being refined.
 
     Recovery needs several well-spread landmarks each already observed in two
@@ -292,7 +302,8 @@ def _exclude_unsupported_invalid_frames(observations, valid, radius_px, config):
             by_invalid_frame[entry.frame_index].append(entry)
     excluded = {}
     for frame, entries in sorted(by_invalid_frame.items()):
-        supported = [entry for entry in entries if trusted_support[entry.track_id] >= 2]
+        supported = [entry for entry in entries if entry.track_id in known_track_ids
+                     or trusted_support[entry.track_id] >= 2]
         spread = _spread(np.asarray([entry.uv for entry in supported]), radius_px)
         reason = None
         if not config.recover_invalid_frames:
