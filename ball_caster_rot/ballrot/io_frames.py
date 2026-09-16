@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob
 import re
+import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,7 @@ import numpy as np
 
 
 InputType = Literal["auto", "video", "images"]
+TimingSource = Literal["native_video_pts", "fps_fallback", "image_fps", "unavailable"]
 
 IMAGE_EXTENSIONS = {
     ".bmp",
@@ -165,6 +167,7 @@ class FrameSource:
         self._fps: float | None = None
         self._frame_count: int | None = None
         self._size: tuple[int, int] | None = None
+        self._timing_source: TimingSource = "unavailable"
         self._probe(path)
 
     def _probe(self, original_path: str | Path) -> None:
@@ -179,6 +182,7 @@ class FrameSource:
                 count if self.max_frames is None else min(count, self.max_frames)
             )
             self._fps = self._image_fps
+            self._timing_source = "image_fps" if self._image_fps is not None else "unavailable"
             return
 
         video_path = Path(original_path).expanduser().resolve()
@@ -214,7 +218,15 @@ class FrameSource:
 
     @property
     def fps(self) -> float | None:
+        """Nominal video frame rate; native frame intervals may differ."""
+
         return self._fps
+
+    @property
+    def timing_source(self) -> TimingSource:
+        """Provenance for the current/last iteration; video timing is known after decoding."""
+
+        return self._timing_source
 
     @property
     def frame_count(self) -> int | None:
@@ -248,9 +260,14 @@ class FrameSource:
             yield from self._iter_video()
 
     def frames(self) -> Iterator[np.ndarray]:
-        """Iterate just BGR image arrays, omitting metadata."""
+        """Iterate BGR arrays without requiring or validating video timing.
 
-        for record in self.records():
+        Callers that deliberately retime a video (for example, an explicit FPS
+        override) use this path. Measurement callers should use ``records()``.
+        """
+
+        records = self._iter_images() if self.kind == "images" else self._iter_video(timestamps=False)
+        for record in records:
             yield record.image
 
     def _iter_images(self) -> Iterator[FrameRecord]:
@@ -270,12 +287,24 @@ class FrameSource:
             timestamp = index / self._fps if self._fps is not None else None
             yield FrameRecord(index, image, timestamp, str(path))
 
-    def _iter_video(self) -> Iterator[FrameRecord]:
+    def _iter_video(self, *, timestamps: bool = True) -> Iterator[FrameRecord]:
+        """Decode sequentially and preserve presentation time relative to frame 0.
+
+        OpenCV backends without timestamp support commonly return zero for
+        every frame. Only that pattern permits a warned nominal-FPS fallback.
+        Corrupt or partially missing timing must not silently change measured
+        velocities, so other non-increasing/invalid timestamps raise an error.
+        """
+
+        self._timing_source = "unavailable"
         capture = cv2.VideoCapture(str(self.path))
         if not capture.isOpened():
             capture.release()
             raise OSError(f"OpenCV could not open video: {self.path}")
         index = 0
+        first_msec: float | None = None
+        previous_msec: float | None = None
+        nominal_fallback = False
         try:
             while self.max_frames is None or index < self.max_frames:
                 ok, image = capture.read()
@@ -283,7 +312,52 @@ class FrameSource:
                     break
                 if image is None:
                     raise OSError(f"video decoder returned an empty frame at {index}")
-                timestamp = index / self._fps if self._fps is not None else None
+                timestamp = None
+                if timestamps:
+                    # Query after read(): position now refers to this decoded
+                    # frame, not the previously decoded frame or next seek.
+                    msec = float(capture.get(cv2.CAP_PROP_POS_MSEC))
+                    if not np.isfinite(msec) or msec < 0:
+                        raise ValueError(
+                            f"invalid video presentation timestamp at frame {index}: {msec} ms; "
+                            "repair the input timing or explicitly set input.fps_override to retime it"
+                        )
+                    if first_msec is None:
+                        first_msec = msec
+                        self._timing_source = "native_video_pts"
+                    elif nominal_fallback:
+                        if msec != 0:
+                            raise ValueError(
+                                f"mixed unavailable and native video timestamps at frame {index}; "
+                                "refusing to mix nominal FPS with presentation timestamps"
+                            )
+                    elif index == 1 and previous_msec == 0 and msec == 0:
+                        if self._fps is None:
+                            raise ValueError(
+                                "video presentation timestamps and nominal FPS are unavailable; "
+                                "set input.fps_override explicitly if the recording rate is known"
+                            )
+                        nominal_fallback = True
+                        self._timing_source = "fps_fallback"
+                        warnings.warn(
+                            "Video presentation timestamps are unavailable (OpenCV returns repeated zeros); "
+                            f"falling back to nominal FPS ({self._fps:g}) for {self.path}. "
+                            "This assumes uniform frame spacing and cannot preserve variable-rate timing.",
+                            RuntimeWarning,
+                            stacklevel=2,
+                        )
+                    elif previous_msec is not None and msec <= previous_msec:
+                        raise ValueError(
+                            f"video presentation timestamps are not strictly increasing at frame {index}: "
+                            f"{msec} ms after {previous_msec} ms; "
+                            "repair the input timing or explicitly set input.fps_override to retime it"
+                        )
+                    timestamp = (
+                        index / self._fps
+                        if nominal_fallback
+                        else (msec - first_msec) / 1000.0
+                    )
+                    previous_msec = msec
                 yield FrameRecord(index, image, timestamp, str(self.path))
                 index += 1
         finally:
@@ -345,4 +419,3 @@ def load_frames(
     return list(
         iter_frames(path, input_type, max_frames, image_fps=image_fps)
     )
-

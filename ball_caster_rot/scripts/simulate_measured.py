@@ -49,6 +49,7 @@ from ballrot.config import (
     configured_frame,
     distortion_coefficients,
     load_config,
+    measurement_frame,
     resolve_from_config,
 )
 from ballrot.io_frames import FrameSource
@@ -118,15 +119,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--swap-shells",
         action="store_true",
         help=(
-            "Render beta_top on the ball -z shell. The renderer paints the "
-            "ball +z shell with the top colour, but nothing ties the top HSV "
-            "class to ball +z: the sign of +z was fixed by --swivel-sign "
-            "during axis calibration, not by which shell the class sits on. "
-            "Use this when the replay's colours come out mirrored against the "
-            "real clip."
+            "Toggle the saved top_shell_sign for this replay: swap which "
+            "geometric cap carries each tracked colour and its full motion. "
+            "This changes cap assignment, not the calibration or angle signs."
         ),
     )
     parser.add_argument("--codec", default="mp4v", help="FourCC for written videos")
+    parser.add_argument(
+        "--render-width", type=int, default=None,
+        help="Synthetic panel width for a smaller replay render; omit for roundtrip tests",
+    )
     return parser
 
 
@@ -154,7 +156,7 @@ def _project(
 
 
 def _graticule(
-    step_deg: float, hemisphere: int, samples: int = 60
+    step_deg: float, hemisphere: int, samples: int = 60, gap_fraction: float = 0.0
 ) -> list[np.ndarray]:
     """Meridians and parallels about ball ``+z``, restricted to one hemisphere.
 
@@ -164,9 +166,12 @@ def _graticule(
     from covering each other.
     """
 
+    if not np.isfinite(gap_fraction) or not 0.0 <= gap_fraction < 1.0:
+        raise ValueError("gap_fraction must be finite and in [0, 1)")
     curves: list[np.ndarray] = []
     step = np.deg2rad(float(step_deg))
-    lo, hi = (0.0, np.pi / 2) if hemisphere >= 0 else (-np.pi / 2, 0.0)
+    edge = np.arcsin(gap_fraction)
+    lo, hi = (edge, np.pi / 2) if hemisphere >= 0 else (-np.pi / 2, -edge)
     for longitude in np.arange(0.0, 2 * np.pi, step):
         t = np.linspace(lo, hi, samples)
         curves.append(
@@ -196,7 +201,8 @@ def _graticule(
 
 
 def _probe_points(
-    R_bc: np.ndarray, hemisphere: int, count: int = 14, seed: int = 12345
+    R_bc: np.ndarray, hemisphere: int, count: int = 14, seed: int = 12345,
+    gap_fraction: float = 0.0,
 ) -> np.ndarray:
     """Ball-fixed markers spread over the cap that faces the camera at t=0.
 
@@ -206,18 +212,18 @@ def _probe_points(
     shows the error directly, in pixels, with no model in the loop.
     """
 
+    if not np.isfinite(gap_fraction) or not 0.0 <= gap_fraction < 1.0:
+        raise ValueError("gap_fraction must be finite and in [0, 1)")
     rng = np.random.default_rng(seed)
     toward_camera_ball = R_bc.T @ np.array([0.0, 0.0, -1.0])
-    points: list[np.ndarray] = []
-    while len(points) < count:
-        candidate = rng.normal(size=3)
-        candidate /= np.linalg.norm(candidate)
-        if np.sign(candidate[2]) != np.sign(hemisphere):
-            continue
-        if candidate @ toward_camera_ball < 0.45:
-            continue
-        points.append(candidate)
-    return np.asarray(points)
+    candidates = rng.normal(size=(max(2000, count * 1000), 3))
+    candidates /= np.linalg.norm(candidates, axis=1)[:, None]
+    usable = (np.sign(hemisphere) * candidates[:, 2] >= gap_fraction) & (
+        candidates @ toward_camera_ball >= 0.45
+    )
+    # A completely hidden shell has no visible probe locations. Never wait
+    # forever trying to sample points from an empty visible cap.
+    return candidates[usable][:count]
 
 
 def _draw_curve(
@@ -309,11 +315,116 @@ def _measured(results_path: Path, frames: int | None, stride: int) -> dict[str, 
     )
     data = {key: np.asarray(series[key], dtype=float) for key in keys}
     count = len(data["time_s"])
+    for shell in ("top", "bottom"):
+        key = f"valid_{shell}"
+        if key in series:
+            values = np.asarray(series[key])
+            if values.shape != (count,) or values.dtype.kind != "b":
+                raise ValueError(f"{key} must contain one boolean per measured frame")
+            data[key] = values
     selected = np.arange(0, count if frames is None else min(count, frames), max(1, stride))
     output = {key: value[selected] for key, value in data.items()}
     output["frame_index"] = selected
     output["metadata"] = payload["metadata"]
+    output["mechanical"] = payload.get("mechanical")
+    _validate_mechanical_poses(output)
     return output
+
+
+def _mechanical_model(measured: dict) -> dict | None:
+    """Return the saved fit geometry; current config cannot relabel old poses."""
+
+    model = measured.get("metadata", {}).get("mechanical_model")
+    diagnostic = measured.get("mechanical") or {}
+    if not model or not model.get("enabled", False):
+        if diagnostic.get("config", {}).get("enabled", False):
+            raise ValueError("Mechanical results are missing saved mechanical_model geometry")
+        return None
+    if model.get("model") != "shared_roll_independent_spin":
+        raise ValueError("Unsupported saved mechanical model")
+    gap = float(model.get("gap_fraction", 0.0))
+    if not np.isfinite(gap) or not 0.0 <= gap < 1.0:
+        raise ValueError("Saved mechanical gap_fraction must be finite and in [0, 1)")
+    return {**model, "gap_fraction": gap}
+
+
+def _validate_mechanical_poses(measured: dict) -> None:
+    """Never silently draw independent rotations as a constrained result."""
+
+    if _mechanical_model(measured) is None:
+        return
+    shared = np.asarray(measured["alpha_rad"], dtype=float)
+    for shell in ("top", "bottom"):
+        valid = _pose_validity(measured, shell)
+        alpha = np.asarray(measured[f"alpha_{shell}_rad"], dtype=float)
+        gamma = np.asarray(measured[f"gamma_{shell}_rad"], dtype=float)
+        difference = np.arctan2(np.sin(alpha - shared), np.cos(alpha - shared))
+        if (not np.all(np.isfinite(shared[valid]))
+            or np.any(np.abs(difference[valid]) > 1e-7)
+            or np.any(np.abs(gamma[valid]) > 1e-7)):
+            raise ValueError(
+                "Saved mechanical poses violate shared roll or zero sideways tilt; "
+                "rerun mechanical fitting before replaying."
+            )
+
+
+def _result_mechanical_model(config: dict, measured: dict) -> dict | None:
+    model = _mechanical_model(measured)
+    if model is not None and "gap_fraction" in config.get("mechanical", {}):
+        requested = float(config["mechanical"]["gap_fraction"])
+        if not np.isclose(requested, model["gap_fraction"], atol=1e-10, rtol=0.0):
+            raise ValueError(
+                "Config mechanical gap differs from the saved results; rerun "
+                "mechanical fitting before changing the rendered geometry."
+            )
+    return model
+
+
+def _pose_validity(measured: dict[str, np.ndarray], shell: str) -> np.ndarray:
+    """A drawable shell pose needs finite angles and any saved validity flag."""
+
+    finite = np.all(
+        np.isfinite(np.column_stack([
+            measured[f"{component}_{shell}_rad"]
+            for component in ("alpha", "gamma", "beta")
+        ])),
+        axis=1,
+    )
+    key = f"valid_{shell}"
+    if key in measured:
+        declared = np.asarray(measured[key], dtype=bool)
+        if declared.shape != finite.shape:
+            raise ValueError(f"{key} must contain one boolean per measured frame")
+        finite &= declared
+    return finite
+
+
+def _render_component(measured: dict[str, np.ndarray], component: str, shell: str) -> np.ndarray:
+    """Supply a display fallback without turning invalid poses into measurements."""
+
+    values = np.asarray(measured[f"{component}_{shell}_rad"], dtype=float).copy()
+    if f"valid_{shell}" in measured:
+        values[~_pose_validity(measured, shell)] = np.nan
+    return _filled(values)
+
+
+def _draw_missing_pose_notice(
+    image: np.ndarray, missing: list[str], *, display_fallback: bool = False
+) -> None:
+    if not missing:
+        return
+    lines = [f"UNRESOLVED: {' / '.join(missing)} shell pose"]
+    lines.append(
+        "Display fallback only; missing motion is unmeasured"
+        if display_fallback else "Missing shell grid and probes are hidden"
+    )
+    # Place below replay-panel titles, on an opaque backing for bright footage.
+    for offset, message in enumerate(lines):
+        y = 53 + 23 * offset
+        scale = min(0.58, max(0.3, (image.shape[1] - 20) / (len(message) * 11.0)))
+        (width, height), baseline = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
+        cv2.rectangle(image, (6, y - height - 4), (min(image.shape[1] - 1, width + 14), y + baseline + 3), (0, 0, 0), -1)
+        cv2.putText(image, message, (10, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 200, 255), 1, cv2.LINE_AA)
 
 
 def _filled(values: np.ndarray) -> np.ndarray:
@@ -366,16 +477,21 @@ def _axes_overlay(
     destination: Path,
     step_deg: float,
     codec: str,
+    swap_shells: bool = False,
 ) -> Path:
+    _validate_mechanical_poses(measured)
+    mechanical = _mechanical_model(measured)
+    gap = mechanical["gap_fraction"] if mechanical is not None else 0.0
     wanted = {int(value): position for position, value in enumerate(measured["frame_index"])}
-    curves = {1: _graticule(step_deg, 1), -1: _graticule(step_deg, -1)}
-    probes = {1: _probe_points(R_bc, 1), -1: _probe_points(R_bc, -1)}
-    alpha_top = _filled(measured["alpha_top_rad"])
-    alpha_bottom = _filled(measured["alpha_bottom_rad"])
-    beta_top = _filled(measured["beta_top_rad"])
-    beta_bottom = _filled(measured["beta_bottom_rad"])
-    gamma_top = _filled(measured["gamma_top_rad"])
-    gamma_bottom = _filled(measured["gamma_bottom_rad"])
+    curves = {sign: _graticule(step_deg, sign, 60, gap) for sign in (1, -1)}
+    probes = {sign: _probe_points(R_bc, sign, 14, 12345, gap) for sign in (1, -1)}
+    alpha_top = measured["alpha_top_rad"]
+    alpha_bottom = measured["alpha_bottom_rad"]
+    beta_top = measured["beta_top_rad"]
+    beta_bottom = measured["beta_bottom_rad"]
+    gamma_top = measured["gamma_top_rad"]
+    gamma_bottom = measured["gamma_bottom_rad"]
+    validity = {shell: _pose_validity(measured, shell) for shell in ("top", "bottom")}
 
     def ball_rotation(alpha: float, gamma: float, beta: float) -> np.ndarray:
         cos_g, sin_g = np.cos(gamma), np.sin(gamma)
@@ -401,14 +517,16 @@ def _axes_overlay(
                 (200, 200, 200),
                 1,
             )
-            for hemisphere, angles, color in (
+            for shell, hemisphere, angles, color in (
                 (
-                    1,
+                    "top",
+                    -1 if swap_shells else 1,
                     (alpha_top[position], gamma_top[position], beta_top[position]),
                     (255, 220, 0),
                 ),
                 (
-                    -1,
+                    "bottom",
+                    1 if swap_shells else -1,
                     (
                         alpha_bottom[position],
                         gamma_bottom[position],
@@ -417,6 +535,8 @@ def _axes_overlay(
                     (180, 0, 255),
                 ),
             ):
+                if not validity[shell][position]:
+                    continue
                 R_total = R_bc @ ball_rotation(*angles)
                 for curve in curves[hemisphere]:
                     _draw_curve(frame, curve, R_total, K, C, radius, color)
@@ -438,6 +558,9 @@ def _axes_overlay(
                         cv2.LINE_AA,
                     )
             _draw_axes(frame, R_bc, K, C, radius, circle)
+            _draw_missing_pose_notice(
+                frame, [shell for shell in ("top", "bottom") if not validity[shell][position]]
+            )
             cv2.putText(
                 frame,
                 f"frame {record.index}   cyan = top shell   magenta = bottom shell"
@@ -477,14 +600,27 @@ def _camera_setup(
 def _trajectories(
     measured: dict[str, np.ndarray], fps: float, swap_shells: bool = False
 ) -> tuple[Trajectory, Trajectory]:
+    _validate_mechanical_poses(measured)
+    constrained = _mechanical_model(measured) is not None
     alpha = _filled(measured["alpha_rad"])
-    beta_top = _filled(measured["beta_top_rad"])
-    beta_bottom = _filled(measured["beta_bottom_rad"])
-    gamma_top = _filled(measured["gamma_top_rad"])
-    gamma_bottom = _filled(measured["gamma_bottom_rad"])
+    beta_top = _render_component(measured, "beta", "top")
+    beta_bottom = _render_component(measured, "beta", "bottom")
+    gamma_top = _render_component(measured, "gamma", "top")
+    gamma_bottom = _render_component(measured, "gamma", "bottom")
+    alpha_top = _render_component(measured, "alpha", "top")
+    alpha_bottom = _render_component(measured, "alpha", "bottom")
+    if constrained:
+        # A missing spin is a labelled display hold. Both rigid caps still
+        # follow the available shared roll; holding shell roll separately
+        # would recreate the impossible relative tilt during missing data.
+        alpha_top = alpha.copy()
+        alpha_bottom = alpha.copy()
+        gamma_top = np.zeros_like(alpha)
+        gamma_bottom = np.zeros_like(alpha)
     if swap_shells:
         beta_top, beta_bottom = beta_bottom, beta_top
         gamma_top, gamma_bottom = gamma_bottom, gamma_top
+        alpha_top, alpha_bottom = alpha_bottom, alpha_top
     model = Trajectory(alpha, beta_top, beta_bottom, fps=fps, name="measured_model")
     full = Trajectory(
         alpha,
@@ -494,6 +630,8 @@ def _trajectories(
         name="measured_full",
         gamma_top=gamma_top,
         gamma_bottom=gamma_bottom,
+        alpha_top=alpha_top,
+        alpha_bottom=alpha_bottom,
     )
     return model, full
 
@@ -510,6 +648,7 @@ def _replay_video(
 ) -> Path:
     wanted = {int(value): position for position, value in enumerate(measured["frame_index"])}
     panel_width = 640
+    validity = {shell: _pose_validity(measured, shell) for shell in ("top", "bottom")}
     writer = None
     source = FrameSource(clip_path, input_type="auto")
     try:
@@ -520,7 +659,13 @@ def _replay_video(
             real = undistort_image(record.image, K, dist)
             panels = [_panel(real, f"real  frame {record.index}", panel_width)]
             for name, frames in rendered.items():
-                panels.append(_panel(frames[position], name, panel_width))
+                panel = _panel(frames[position], name, panel_width)
+                _draw_missing_pose_notice(
+                    panel,
+                    [shell for shell in ("top", "bottom") if not validity[shell][position]],
+                    display_fallback=True,
+                )
+                panels.append(panel)
             composite = np.hstack(panels)
             if writer is None:
                 writer = _writer(
@@ -546,7 +691,7 @@ def _step_size(trajectory: Trajectory) -> dict[str, Any]:
     for name in ("top", "bottom"):
         beta = getattr(trajectory, f"beta_{name}")
         gamma = getattr(trajectory, f"gamma_{name}")
-        angles = np.column_stack([trajectory.alpha, gamma, beta])
+        angles = np.column_stack([getattr(trajectory, f"alpha_{name}"), gamma, beta])
         rotations = Rotation.from_euler("XYZ", angles)
         steps.append(np.rad2deg((rotations[:-1].inv() * rotations[1:]).magnitude()))
     combined = np.concatenate(steps)
@@ -568,6 +713,7 @@ def _roundtrip(
     R_bc: np.ndarray,
     config: dict[str, Any],
     fps: float,
+    swap_shells: bool = False,
 ) -> dict[str, Any]:
     """Re-measure a rendered sequence and compare against its own input."""
 
@@ -610,9 +756,9 @@ def _roundtrip(
         **_step_size(trajectory),
     }
     for name, recovered, truth in (
-        ("alpha", motion.alpha, trajectory.alpha),
-        ("beta_top", motion.beta_top, trajectory.beta_top),
-        ("beta_bottom", motion.beta_bottom, trajectory.beta_bottom),
+        ("alpha", motion.alpha, 0.5 * (trajectory.alpha_top + trajectory.alpha_bottom)),
+        ("beta_top", motion.beta_top, trajectory.beta_bottom if swap_shells else trajectory.beta_top),
+        ("beta_bottom", motion.beta_bottom, trajectory.beta_top if swap_shells else trajectory.beta_bottom),
     ):
         count = min(len(recovered), len(truth))
         error = np.rad2deg(recovered[:count] - truth[:count])
@@ -625,10 +771,35 @@ def _roundtrip(
     return report
 
 
+def _result_geometry(config: dict, metadata: dict):
+    """Use the saved coordinate frame and reject incompatible config changes."""
+    K = np.asarray(metadata["K"], dtype=float)
+    dist = distortion_coefficients({"dist": metadata["dist"]})
+    circle = tuple(metadata["circle"])
+    frame = configured_frame({"R_bc": metadata["R_bc"]})
+    requested = measurement_frame(config.get("frame_calib", {}))
+    if requested is not None and not np.allclose(requested, frame, atol=1e-7):
+        raise ValueError(
+            "Config initial orientation differs from these results. Run "
+            "scripts/reorient_results.py or scripts/run.py before replaying; "
+            "changing the rendered frame alone would misinterpret the angles."
+        )
+    configured = configured_circle(config.get("circle", {}))
+    cfg_K = config.get("camera", {}).get("K")
+    cfg_dist = distortion_coefficients(config.get("camera", {}))
+    if ((configured is not None and not np.allclose(configured, circle))
+        or (cfg_K is not None and not np.allclose(cfg_K, K))
+        or cfg_dist.shape != dist.shape or not np.allclose(cfg_dist, dist)):
+        raise ValueError("Config camera/circle differs from the saved results; rerun tracking.")
+    return K, dist, circle, frame
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.stride < 1:
         raise SystemExit("--stride must be at least 1")
+    if args.render_width is not None and (args.render_width < 64 or "roundtrip" in args.tests):
+        raise SystemExit("--render-width must be >=64 and is for axes/replay only; omit it for roundtrip")
     config, config_path = load_config(args.config)
     output_root = resolve_from_config(config_path, config.get("output", {}).get("dir", "out/real"))
     results_path = args.results or output_root / "results.json"
@@ -640,12 +811,14 @@ def main(argv: list[str] | None = None) -> int:
 
     measured = _measured(results_path, args.frames, args.stride)
     metadata = measured["metadata"]
-    K = np.asarray(metadata["K"], dtype=float)
-    dist = distortion_coefficients(config.get("camera", {}))
-    circle = configured_circle(config.get("circle", {})) or tuple(metadata["circle"])
-    R_bc = configured_frame(config.get("frame_calib", {}))
-    if R_bc is None:
-        R_bc = np.asarray(metadata["R_bc"], dtype=float)
+    K, dist, circle, R_bc = _result_geometry(config, metadata)
+    mechanical = _result_mechanical_model(config, measured)
+    if mechanical is None and config.get("mechanical", {}).get("enabled", False):
+        print("These saved results are unconstrained. Run scripts/run.py to apply the mechanical fit.")
+    top_shell_sign = int(metadata.get("top_shell_sign", 1))
+    if top_shell_sign not in (-1, 1):
+        raise ValueError("top_shell_sign must be +1 or -1")
+    swap_shells = (top_shell_sign == -1) != args.swap_shells
     fps = float(metadata["fps"]) / max(1, args.stride)
     C, radius = sphere_pose_from_circle(*circle, K)
 
@@ -660,6 +833,27 @@ def main(argv: list[str] | None = None) -> int:
         "clip": str(clip_path),
         "frames_used": int(len(measured["frame_index"])),
         "stride": args.stride,
+        "initial_roll_deg": metadata.get("initial_roll_deg", 0.0),
+        "top_shell_sign": -1 if swap_shells else 1,
+        "mechanical_model": mechanical,
+        "pose_source": "mechanical_fit" if mechanical is not None else "independent_shell_estimates",
+        "mechanical_note": (
+            "Both caps share roll and have independent swivel/spin. Their rim planes "
+            "remain separated by gap_fraction times the sphere diameter in 3D; "
+            "the apparent image gap changes with view. This geometric consistency "
+            "does not establish measurement accuracy."
+            if mechanical is not None else None
+        ),
+        "fit_method": (measured.get("mechanical") or {}).get("method"),
+        "timing_note": "Videos use constant-rate diagnostic playback; result time_s contains measurement timestamps.",
+        "tracking_note": (
+            "Unresolved shell poses have no moving grid or probes in the axes overlay. "
+            "Replay explicitly labels display fallbacks across missing poses; these are not measurements."
+        ),
+        "unresolved_frames": {
+            shell: int(np.count_nonzero(~_pose_validity(measured, shell)))
+            for shell in ("top", "bottom")
+        },
     }
 
     if "axes" in args.tests:
@@ -677,22 +871,37 @@ def main(argv: list[str] | None = None) -> int:
             output_dir / "axes_overlay.mp4",
             args.graticule_step_deg,
             args.codec,
+            swap_shells=swap_shells,
         )
 
     rendered: dict[str, list[np.ndarray]] = {}
-    model_trajectory, full_trajectory = _trajectories(measured, fps, args.swap_shells)
+    model_trajectory, full_trajectory = _trajectories(measured, fps, swap_shells)
+    full_label = (
+        "simulated: mechanically constrained fit" if mechanical is not None
+        else "simulated: full measured orientation"
+    )
     if {"replay", "roundtrip"} & set(args.tests):
-        setup = _camera_setup(K, R_bc, circle, image_size)
+        render_K, render_circle, render_size = K, circle, image_size
+        if args.render_width is not None:
+            scale = args.render_width / image_size[1]
+            render_K = np.diag([scale, scale, 1.0]) @ K
+            render_circle = tuple(value * scale for value in circle)
+            render_size = (int(round(image_size[0] * scale)), args.render_width)
+        setup = _camera_setup(render_K, R_bc, render_circle, render_size)
+        defaults = RenderConfig()
         render_config = RenderConfig(
             camera=setup,
             num_speckles=args.num_speckles,
-            dot_radius_px=max(2.0, circle[2] * 0.008),
+            dot_radius_px=max(1.0, render_circle[2] * 0.008),
             draw_yoke=False,
+            top_color_bgr=defaults.bottom_color_bgr if swap_shells else defaults.top_color_bgr,
+            bottom_color_bgr=defaults.top_color_bgr if swap_shells else defaults.bottom_color_bgr,
+            gap_fraction=mechanical["gap_fraction"] if mechanical is not None else 0.0,
         )
-        for label, trajectory in (
-            ("simulated: Rx(alpha) Rz(beta) model only", model_trajectory),
-            ("simulated: full measured orientation", full_trajectory),
-        ):
+        trajectories = [(full_label, full_trajectory)]
+        if mechanical is None:
+            trajectories.insert(0, ("simulated: Rx(alpha) Rz(beta) model only", model_trajectory))
+        for label, trajectory in trajectories:
             print(f"render: {trajectory.name} ({trajectory.num_frames} frames) ...")
             rendered[label] = render_sequence(None, trajectory, render_config).frames
 
@@ -711,9 +920,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if "roundtrip" in args.tests:
         print("roundtrip: re-measuring the rendered sequence ...")
-        label = "simulated: full measured orientation"
         report["roundtrip"] = _roundtrip(
-            rendered[label], full_trajectory, K, circle, R_bc, config, fps
+            rendered[full_label], full_trajectory, K, circle, R_bc, config, fps,
+            swap_shells=swap_shells,
         )
         summary = report["roundtrip"]
         print(

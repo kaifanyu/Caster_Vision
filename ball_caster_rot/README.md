@@ -230,13 +230,19 @@ In the window:
 - Press `T`, `B`, or `Y` to choose the top, bottom, or yoke class.
 - Click several patches of the active class.
 - `N`/`.` and `P`/`,` step through frames; `0` returns to the first.
-- `SPACE` toggles a live preview of the mask the current samples would give.
+- `SPACE` toggles the processed tracking masks: growth, separation, yoke
+  exclusion, and temporal boundary margin are included when a circle is set.
+  Unsampled classes retain their configured ranges in the preview.
 - `U` undoes the last click; `R` clears the active class.
 - `Enter` prints and writes the suggested ranges; `Q`/Esc cancels.
 
 The status line counts clicks *and* distinct frames per class, and the script
 warns if a hemisphere was sampled on fewer than three frames. OpenCV hue is
 `0..179`; wrapped red ranges where `lo.H > hi.H` are supported.
+Preview and saved ranges both use the requested `--hue-margin` and
+`--sv-margin`. Without a circle or both shell ranges, preview shows only
+available raw HSV colors. Sample painted markings for the shell classes;
+white interior rims and holes do not follow the outer-sphere model.
 
 #### Sparse markings: grow the mask off the paint
 
@@ -439,13 +445,273 @@ prevent writing the debug video:
 python .\scripts\run.py --config .\config.yaml --strict --no-overlay
 ```
 
+## Persistent tracking and nearby keyframe correction
+
+The current `config.yaml` enables temporal tracking for the measurement run:
+
+```yaml
+temporal:
+  enabled: true
+  boundary_margin_px: 3
+```
+
+`run.py` keeps feature identities between frames and replenishes lost tracks.
+It also attempts direct image matches to nearby saved images, called keyframes,
+every three frames by default and when an adjacent estimate or previous pose
+is unreliable, provided image sharpness is sufficient. Tracked or predicted
+positions initialize these matches.
+Accepted observations from one or more nearby keyframes jointly fit the current
+orientation, reducing reliance on a long chain of frame-to-frame rotations.
+Earlier saved poses are not re-optimized by this temporal pass; the optional
+offline refinement below revisits them after tracking finishes.
+A separate snapshot of the latest accepted frame provides a nearby recovery
+reference between scheduled keyframes, without replacing the older references.
+
+The temporal estimator checks inlier count, inlier ratio, angular residual,
+image sharpness, and feature spread before accepting a pose. Sharpness is
+compared with recent image history to accommodate changing visible texture and
+lighting; it is a quality indicator, not a definitive blur detector. When an
+adjacent pair is weak, a direct match to an earlier good keyframe can recover the current
+orientation, including motion across the gap. If that match is also unreliable,
+the frame remains invalid. A later recovery does not turn unresolved frames
+into measured poses, and the estimator does not interpolate them as measured
+truth. The axes overlay hides that shell's grid and probes and displays an
+`UNRESOLVED` notice. Replay labels the display fallback for a missing pose;
+the fallback rendering is not a measurement.
+
+`results.json` adds a `temporal` object containing the effective `config`, a
+`summary`, and per-frame `frames` diagnostics. Each shell records its status
+(`initial`, `increment`, `keyframe`, `recovered`, or `unresolved`), quality
+metrics, rejection reasons, and keyframe references. These records distinguish
+an accepted correction from an unresolved tracking interval. The angle series
+also records `valid_top` and `valid_bottom` per frame.
+
+This is a local correction: keyframes have bounded lifetimes and require
+visible texture and overlapping views. It does not provide global loop closure
+or repair an incorrect circle, camera model, or moving ball center. It can
+reduce gradual tracking drift, but improved accuracy on real footage still
+needs comparison with visible marks or an independent motion reference.
+
+Set both `temporal.enabled: false` and `offline.enabled: false` to use the
+original independent frame-pair tracker for a baseline comparison.
+Configurations without either section also retain that behavior. Axis calibration continues to use its existing
+frame-pair estimator; this measurement-tracking update alone does not require
+repeating a passing axis calibration.
+
+### Check boundaries across the clip
+
+Temporal tracking erodes the usable masks by `boundary_margin_px` to keep
+feature centers farther from mask boundaries. The default is a conservative
+extra 3-pixel margin; it does not guarantee that every KLT window at every
+pyramid level avoids the yoke, opening, or silhouette. Increasing the margin
+can exclude contamination but also remove useful features, especially with
+sparse markings. Inspect the tracking overlay after changing it.
+
+Check the circle and HSV masks near the beginning, middle, and end, and at
+blurred or partly obscured moments. Additional HSV samples help when a shell's
+color falls outside the saved range as lighting changes. They do not provide
+orientation anchors or automatically update the circle over time. If image
+geometry changed between recordings, refit the circle and review the dependent
+calibration; if the center moves within one recording, the current fixed-center
+model is unsuitable. Stable geometry and masks do not require annotating every
+frame before tracking.
+
+To regenerate both overlays after enabling temporal tracking:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run.py --config .\config.yaml
+.\.venv\Scripts\python.exe .\scripts\simulate_measured.py --config .\config.yaml --tests axes replay --stride 1 --render-width 640
+```
+
+The first command writes the tracking overlay and new measurements. The second
+uses those measurements for the axes overlay and replay. Both write beneath
+`output.dir`; preserve an earlier run or select a different output directory
+in a copied config if you want a side-by-side comparison.
+
+## Offline trajectory refinement
+
+The current measurement config enables a second pass after temporal tracking:
+
+```yaml
+temporal:
+  enabled: true
+offline:
+  enabled: true
+  backward_window_frames: 12
+  backward_stride: 3
+  rate_window_s: 0.25
+  rate_polynomial_order: 2
+```
+
+The tracker supplies persistent feature observations and accepted direct
+keyframe matches. It also performs actual image matching backward from later
+sharp frames into a bounded 12-frame buffer. Backward matching runs every three
+frames (`backward_stride: 3`), matching intervening nearby frames and sampling
+farther valid references at that stride;
+weak earlier frames can be retried within the buffer
+when their texture remains usable. These are fresh image observations, not
+interpolated poses.
+
+Direct keyframe and backward matches use a fixed template identity: the exact
+source image and source feature define a landmark. Those identities are kept
+separate from adjacent-frame persistent KLT tracks, so a drifted snapshot in
+a later keyframe is not silently merged into the same material landmark.
+Spatial selection reserves adjacent observations to connect intervening frames,
+then admits fixed-template evidence (weight 2) in coherent landmark bundles.
+Each admitted landmark retains observations in at least three distinct frames;
+frame occupancy and a spatial grid balance coverage under the per-frame cap.
+This prevents a keyframe from keeping long tracks while dropping the reference
+observations needed by shorter reverse matches in intervening frames. Selection
+does not rank observations by agreement with the initial pose estimate.
+
+Offline refinement jointly adjusts camera-relative shell orientations and
+feature locations on the sphere to reduce their pixel
+reprojection errors: the differences between observed markings and their
+predicted image positions. Observations from later images can therefore
+correct earlier poses as well as the current pose. The calibrated camera,
+ball center, and sphere radius remain fixed during this fit.
+
+The current settings retain tracks seen in at least three frames and select
+up to 100 observations per frame for fitting. A connected fit must converge,
+not increase its robust pixel-error objective, preserve visibility and spatial
+coverage, keep the final inlier graph connected to its anchor, and pass the
+per-frame checks. Defaults require at least 12 inliers,
+70% inlier support, and at most 2-pixel error for an observation to count as an
+inlier. Changes to previously valid poses are limited to 5 degrees. A rejected
+fit retains that component's original poses and validity; it is recorded as a
+rejection, not silently presented as a refined result. Each component retains
+its earliest trusted pose as its reference, so an error already in that anchor
+can remain.
+
+This independent stage retains each shell's general 3D rotation. It does not enforce
+shared roll, zero gamma, or no slip. The resulting orientations still flow
+through the calibrated caster-angle decomposition, and shell disagreement and
+gamma remain diagnostics. The mechanical stage below then fits the shared
+mechanism when enabled. Neither stage measures ground-relative contact slip.
+
+Rates use native measurement timestamps and local polynomial fits within
+contiguous valid intervals, with a 0.25-second quadratic fitting window by
+default. They do not bridge missing measurements. Shared-alpha rates require
+both shells to be valid in independent mode, preventing a change in the observed shell from
+creating an artificial derivative spike. A single shell can still support an
+alpha angle while its shared-alpha rate is missing. Each beta rate uses its
+own shell's validity, and insufficient local samples leave rates missing.
+
+Camera-frame angular-velocity vectors describe the full camera-relative
+rotation, separately from the decomposed caster-angle rates. JSON stores
+`frames.omega_top_camera_rad_s` and `frames.omega_bottom_camera_rad_s` as
+`N x 3` arrays. CSV has separate x/y/z columns, for example
+`omega_top_camera_x_rad_s`. These are spatial angular velocities satisfying
+`dR/dt = skew(omega) @ R`, not world-relative contact-slip velocities.
+Rate processing is recorded in `metadata.rate_processing` in `results.json`.
+
+The 0.25-second window can attenuate brief steering transients. Compare results
+with smaller and larger windows and use the same settings for both caster
+designs. A smoother rate curve is not evidence of more accurate motion. These
+rate fits do not smooth or replace the saved pose trajectory. Keep
+`input.fps_override: null` to use native video timestamps.
+
+Inspect `summary.offline_tracking` and the `offline` object in `results.json`
+for final counts and refinement diagnostics, and the main
+`frames.valid_top` / `frames.valid_bottom` flags for final pose
+validity. The `temporal` diagnostics and feature `tracking_overlay.mp4` describe
+the initial tracking pass; they are not post-refinement residuals or final
+validity. Regenerate `simulation/axes_overlay.mp4` from the new results to view
+the refined trajectory. `offline_observations.npz` preserves feature IDs,
+undistorted pixel observations, weights, timestamps, fixed geometry, and the
+initial/refined rotations and validity for later audits; retain it together
+with the config and results. Observation archive schema version 2 also saves
+`landmark_id`, `landmark_family`, `landmark_source_frame`, and
+`landmark_source_track_id`, making fixed-template and adjacent-track
+observations distinguishable.
+
+Unresolved intervals without sufficient observation connections remain
+invalid; fitting separate components does not establish their missing relative
+motion. Joint fitting cannot recover information absent from the footage,
+correct the fixed geometry, or
+establish absolute accuracy without an independent reference. Repeated texture
+and correlated tracking errors can also survive refinement. Compare equivalent
+runs with `offline.enabled: false` and `true` (with `mechanical.enabled: false`), preserving separate output
+directories, before using the results for quantitative design comparisons.
+The two commands above run refinement and then render its results; no separate
+offline command is needed.
+
+## Joint mechanical fit and fixed shell gap
+
+The current config also enables:
+
+```yaml
+mechanical:
+  enabled: true
+  gap_fraction: 0.10  # 20 mm gap / 200 mm ball diameter
+```
+
+This stage fits image observations jointly with exactly three motion
+coordinates: shared roll `alpha`, independent `beta_top` and `beta_bottom`.
+For the calibrated initial frame `F`, camera-relative shell rotation is
+`F @ Rx(alpha) @ Rz(beta_shell) @ F.T`. Independent sideways tilt is excluded.
+The two shell spin axes agree, while their outward cap directions are opposite.
+There is no equal-spin or no-slip constraint.
+
+`gap_fraction` is the physical separation between the rim planes divided by
+ball diameter. The current measured dimensions are a 20 mm gap and 100 mm
+ball radius, giving `20 / (2 * 100) = 0.10`. The fit uses a normalized radius;
+there is no separate physical-radius setting for rotation estimation. Keep
+`circle.r_px` in pixels. Zero means ideal touching rims. Cap landmarks, rendered
+surfaces, grids, and probes respect this fixed 3D gap. Its projected pixel width
+can change with perspective. The sphere center stays fixed, and this is not a
+full collision model of the yoke or shell openings.
+
+`run.py` performs the fit when enabled; it requires both temporal and offline
+processing. To reuse saved observations without tracking again:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\refine_mechanical.py --config .\config.yaml --results .\out\offline_verified\results.json --output .\out\mechanical_verified
+.\.venv\Scripts\python.exe .\scripts\simulate_measured.py --config .\config.yaml --results .\out\mechanical_verified\results.json --output .\out\mechanical_verified\simulation --tests axes replay --stride 1 --render-width 640
+```
+
+That example uses the saved 120-frame run. Substitute another `results.json`
+with its sibling schema-2-or-later `offline_observations.npz` for another run.
+The refit validates camera geometry and landmark provenance and preserves its
+source directory. Changes to starting roll or gap require refitting; changes
+to intrinsics, distortion, or the sphere circle require retracking. Use
+`refine_mechanical.py` to change the starting frame of constrained results;
+`reorient_results.py` only re-expresses unconstrained results.
+
+The optimizer uses the existing robust pixel loss and quality gates. Shared
+roll is anchored once per connected joint trajectory; each shell component
+has a separate spin reference. Per-frame acceptance requires enough well-spread
+inliers connected to that reference. The 5-degree fit-correction limit is
+relative to the mechanically projected starting guess; the separate projection
+change from the unconstrained pose is reported. Rejected measurements remain
+invalid, without falling back to independent poses under a constrained label.
+Bad observations can still affect a robust fit, and disconnected components
+inherit their input reference rather than recovering unseen motion.
+
+Inspect `mechanical_report.json`, `results.json.mechanical`, and
+`summary.mechanical_tracking`. CSV includes separate mechanical statuses.
+`results.json.unconstrained` preserves the independent poses and checks;
+schema 3 observation archives also preserve their matrices and validity.
+Zero gamma and matching roll are imposed by the model, not independent proof
+of accuracy. The runner's self-consistency checks use the preserved independent
+estimates instead. Pixel residuals are fit diagnostics, not ground truth.
+
+One visible shell can measure shared roll and its rate. A hidden shell's spin
+remains missing. The axes overlay hides invalid shells, and replay explicitly
+labels any held spin used for display. Each shell's swivel rate uses only its
+own valid intervals; shared roll rates use either valid shell in this joint mode.
+Neither rates nor missing poses are filled across unsupported intervals.
+
 ## Outputs and acceptance checks
 
 The default real output directory is `out/real/`:
 
 - `results.csv`: angles in radians/degrees, angular velocities, and per-frame
   quality columns
-- `results.json`: metadata, complete time series, and quality summary
+- `results.json`: metadata, complete time series, quality summary, and temporal
+  correction / offline refinement diagnostics when enabled
+- `offline_observations.npz`: saved feature observations when offline refinement
+  is enabled
 - `angles.png`
 - `angular_velocities.png`
 - `diagnostics.png`
@@ -461,8 +727,9 @@ The strict runner checks every frame pair for each hemisphere:
 - RANSAC inlier ratio at or above `0.7`
 - per-frame median forward-backward tracking error at or below `1 px`
 - minimum tracked count at or above `estimate.min_inliers` (default `8`)
-- successful rotation solves on every frame pair (a missed increment makes
-  later absolute angles incomplete)
+- successful rotation solves on every frame pair (with temporal tracking,
+  inspect the additional validity and recovery diagnostics; the original
+  frame-pair checks still report weak intervals)
 - median absolute `gamma` residual at or below `1 deg`
 
 It also requires median top/bottom roll disagreement at or below `1 deg`, and
@@ -521,10 +788,11 @@ python .\scripts\simulate_measured.py --config .\config.yaml --stride 4
 
 - `axes` draws the calibrated ball axes, a ball-fixed graticule, and numbered
   ball-fixed probe rings on the **real** footage, rotated by the measured
-  per-frame orientation. Each numbered ring is pinned to one point of the
-  physical shell, so if the rotation is right the ring stays on the same
-  speckle for the whole clip. A ring that slides off shows the error directly,
-  in pixels, with no model in the loop. This test uses no synthetic rendering.
+  per-frame orientation. The large arrows are fixed initial reference axes;
+  the graticule and rings move. Rings start at virtual surface locations, not
+  detected paint marks. Check whether each stays fixed relative to neighboring
+  visible texture, ignoring yoke/opening occlusions. Sliding indicates an error
+  in the predicted surface motion. This test uses no synthetic rendering.
 - `replay` renders the measured trajectory with the synthetic ball renderer
   using the real `K`, circle, and `R_bc`, beside the real clip. It renders the
   modeled `Rx(alpha) @ Rz(beta)` manifold and the full measured orientation
@@ -534,14 +802,90 @@ python .\scripts\simulate_measured.py --config .\config.yaml --stride 4
   compares the recovered angles with the ones fed in. A small round-trip error
   means the estimator and the angle conventions are self-consistent; it does
   **not** validate `R_bc`, the circle, or the physical motion model. A large
-  round-trip error is a code or convention bug.
+  round-trip error can also result from loss of tracking or motion outside the
+  estimator's characterized range; it does not uniquely identify a code bug.
 
-Read them together. A clean round trip beside a sliding `axes` overlay means
-the code is right and the calibration or the footage is not.
+Read them together. A clean round trip establishes consistency on that
+rendered sequence; a sliding real overlay still needs camera geometry,
+tracking quality, and accumulated motion to be checked.
 
 Select individual tests with `--tests axes`, and use `--stride`/`--frames` to
 keep rendering time reasonable on long clips. Outputs go to
 `<output.dir>/simulation/`.
+
+### Clips that start away from the calibrated home pose
+
+Keep `frame_calib.R_bc` as the home calibration. Set the clip's starting roll
+relative to that home using `frame_calib.initial_roll_deg` (default `0.0`).
+Use a physically measured, signed angle; the current config explicitly keeps
+zero until a different starting roll is established. The software does not
+automatically choose an offset to minimize gamma or shell disagreement.
+The runner uses `R_bc @ Rx(initial_roll_deg)` for decomposition and saves that
+effective frame in the results. Reported `alpha` remains relative to the clip's
+start. Adding an offset to angles decomposed in the wrong frame would leave
+roll/spin mixing uncorrected. This setting assumes the mount and roll axis did
+not change; a re-seated camera requires recalibration.
+
+A starting-pose mismatch can tilt the rendered shell boundary and mix roll
+and spin during decomposition. It is different from accumulated tracking
+error. If `A` is the camera-relative orientation and `F` the initial frame,
+the full overlay renders `F @ (F.T @ A @ F) = A @ F`. Correcting `F` changes
+the grid's reference placement; it does not repair errors in `A`. An initial
+offset and tracking drift can both be present in the same recording.
+
+`frame_calib.top_shell_sign` identifies which geometric cap carries the top
+HSV class: `1` for +z, `-1` for -z. It controls replay colour/motion assignment;
+it does not change the tracked colour labels or angular sign convention.
+The full replay preserves each shell's measured alpha, gamma, and beta. The
+model panel uses shared alpha and zero gamma. Synthetic speckles are an
+illustration, so their individual positions need not match the real paint.
+
+**Historical September 10 example; not an offset recommendation for the current
+clip.** For that recording, `config.upright.aligned.yaml` copies the passed
+home calibration and sets a **visually estimated** `initial_roll_deg: 90.0`
+and `top_shell_sign: -1`. Its outputs use a separate directory. Those old config
+files are absent from the current checkout. With the historical files restored,
+these commands re-express those saved rotations and render that recording:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\reorient_results.py --config .\config.upright.aligned.yaml --results .\out\real_20260910\results.json
+.\.venv\Scripts\python.exe .\scripts\simulate_measured.py --config .\config.upright.aligned.yaml --tests axes replay --stride 1 --render-width 640
+```
+
+Reorientation reconstructs the original full rotations, preserves failed
+steps, checks the input/camera/circle, and refuses to overwrite the source
+results. A pose change cannot recover motion lost during tracking failures.
+Changing the initial pose in YAML requires reorientation or a tracking rerun
+before simulation; the simulator rejects a frame mismatch. Omit
+`--render-width` when requesting the optional `roundtrip` test.
+
+To also regenerate the feature tracking overlay from scratch, run
+`scripts/run.py --config .\config.upright.aligned.yaml` before simulation.
+The original feature overlay remains valid because reorientation does not
+alter the image correspondences.
+
+Video measurement now uses normalized native presentation timestamps unless
+`input.fps_override` explicitly requests retiming. Results record the timing
+source; wholly unavailable timestamps warn and fall back to nominal FPS,
+while malformed or mixed timing is rejected. Diagnostic MP4s still use a
+constant frame rate; use `time_s` in CSV/JSON as the measurement clock. These
+changes retain the existing `Rx(alpha) @ Rz(beta)` convention; they do not
+implement the additional PDF contact/velocity model.
+
+## Plotting saved motion
+
+To visualize the saved measurement with missing motion explicitly marked:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\plot_motion_history.py --results .\out\real_20260910_aligned\results.json --output .\out\motion_history_20260910 --with-clip
+```
+
+This writes a five-page PDF, PNG/SVG figures, a CSV, and per-shell rotation
+matrices/quaternions. Camera-relative motion is shown separately from
+calibration-dependent roll/spin. Interval rates use the saved timestamps;
+failed intervals remain missing. `--with-clip` also verifies source timestamps
+and adds actual video snapshots. Read the September 10 interpretation in
+[out/motion_history_20260910/README.md](out/motion_history_20260910/README.md).
 
 ## Recording advice
 
@@ -570,7 +914,7 @@ keep rendering time reasonable on long clips. Outputs go to
 | Point count collapses near the limb | Add speckle density/coverage; cautiously raise `limb_cull_deg` or improve the viewpoint. |
 | Top/bottom roll disagree | Recheck `R_bc` and hemisphere segmentation contamination. |
 | `gamma` grows over time | Recheck `R_bc`, circle stability, accumulated drift, mount wobble, and whether motion violates the `Rx(alpha) @ Rz(beta)` model. Check `swivel_axis_check` first: a large `disagreement_deg` explains a large `gamma` outright. |
-| `swivel_axis_check` reports `mismatch` | The ball was re-oriented relative to the camera between axis calibration and this clip. Redo axis calibration in the measurement pose, or re-record the clip in the calibration pose. Per-frame residuals cannot detect this. |
+| `swivel_axis_check` reports `mismatch` | Check the initial roll relative to the calibrated home pose and accumulated tracking drift. A known starting roll can be set with `initial_roll_deg`; a changed camera/roll-axis relationship needs new calibration. |
 | Detection misses most of one hemisphere | Its HSV range was fitted on one frame, usually a shaded one. Re-run `inspect_hsv.py --frames 12` and sample that shell bright, shaded, frontal, and near the limb; check `yoke_hsv.hi[2]` is not eating it. |
 | Few tracks despite correct colour masks | Sparse markings on plain surface. Raise `segment.grow_px` so the untextured surface between marks becomes trackable, and raise `track.max_corners`. |
 | Circle preview misses the ball | Rerun `calibrate_circle.py --manual`; use widely separated silhouette points. |

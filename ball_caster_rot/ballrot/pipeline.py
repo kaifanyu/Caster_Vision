@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 import cv2
 import numpy as np
@@ -14,10 +14,14 @@ from .calibration import detect_circle_auto
 from .camera import undistort_image
 from .diagnostics import FrameQuality, HemisphereQuality
 from .estimate import FrameRotationEstimate, solve_frame_increments
-from .integrate import DecomposedMotion, accumulate_increments, decompose_hemispheres
+from .integrate import DecomposedMotion, accumulate_increments, decompose_hemispheres, mechanical_motion
+from .mechanical import MechanicalConfig, refine_mechanical_trajectory
+from .offline import OfflineConfig, refine_trajectory
+from .offline_observations import OfflineObservationCollector
 from .segment import SegmentationMasks, segment_frame
 from .sphere import sphere_pose_from_circle
-from .track import FrameMatches, KLTConfig, KLTTracker
+from .track import FrameMatches, KLTConfig, KLTTracker, PersistentKLTTracker
+from .temporal import TemporalConfig, TemporalRotationTracker, safe_tracking_masks, temporal_report
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,14 @@ class InputFrame:
 
 @dataclass
 class PipelineResult:
+    """Measured poses and the adjacent-pair evidence used to obtain them.
+
+    In temporal mode, ``*_step_valid`` identifies trustworthy absolute poses.
+    A pose recovered after a gap is valid, but its one-frame increment is None.
+    ``matches``, ``estimates`` and ``qualities`` retain the raw adjacent-pair
+    evidence; ``temporal`` records correction/recovery decisions separately.
+    """
+
     timestamps_s: np.ndarray
     top_increments: list[np.ndarray | None]
     bottom_increments: list[np.ndarray | None]
@@ -48,6 +60,16 @@ class PipelineResult:
     dist: np.ndarray
     frame_count: int
     overlay_path: Path | None = None
+    temporal: dict[str, Any] | None = None
+    offline: dict[str, Any] | None = None
+    offline_observations: dict | None = None
+    initial_rotations: dict | None = None
+    initial_valid: dict | None = None
+    offline_landmark_sources: dict | None = None
+    mechanical: dict | None = None
+    unconstrained_rotations: dict | None = None
+    unconstrained_valid: dict | None = None
+    unconstrained_motion: DecomposedMotion | None = None
 
 
 def _records(frames: Iterable[Any], fps: float = 30.0) -> Iterator[InputFrame]:
@@ -167,15 +189,24 @@ def run_pipeline(
     segment_config: Mapping[str, Any] | None = None,
     track_config: Mapping[str, Any] | None = None,
     estimate_config: Mapping[str, Any] | None = None,
+    temporal_config: Mapping[str, Any] | None = None,
+    offline_config: Mapping[str, Any] | None = None,
+    mechanical_config: Mapping[str, Any] | None = None,
+    top_shell_sign: int = 1,
     fps: float = 30.0,
     overlay_path: str | Path | None = None,
     overlay_codec: str = "mp4v",
+    progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """Process a video/image iterable with one shared implementation.
 
     Input images are undistorted before circle fitting, segmentation, and KLT.
     Consequently configured circle coordinates must refer to the undistorted
     image, as produced by ``scripts/calibrate_circle.py``.
+
+    ``temporal_config.enabled`` opts into persistent tracks, quality gates,
+    and local image anchors. It defaults off for compatibility with isolated
+    axis calibration and callers that require raw frame-pair increments.
     """
 
     matrix = np.asarray(K, dtype=float)
@@ -200,8 +231,21 @@ def run_pipeline(
     segment_values = dict(segment_config or {})
     track_values = dict(track_config or {})
     estimate_values = dict(estimate_config or {})
-    tracker = KLTTracker(_tracker_config(track_values))
+    temporal_options = TemporalConfig.from_mapping(temporal_config)
+    offline_options = OfflineConfig.from_mapping(offline_config)
+    mechanical_options = MechanicalConfig.from_mapping(mechanical_config)
+    if mechanical_options.enabled and (not offline_options.enabled or R_bc is None):
+        raise ValueError("mechanical processing requires offline.enabled=true and calibrated R_bc")
+    if top_shell_sign not in (-1, 1):
+        raise ValueError("top_shell_sign must be +1 or -1")
+    if offline_options.enabled and not temporal_options.enabled:
+        raise ValueError("offline processing requires temporal.enabled=true for persistent feature identities")
+    klt_config = _tracker_config(track_values)
+    tracker = (PersistentKLTTracker(klt_config) if temporal_options.enabled
+               else KLTTracker(klt_config))
     previous_masks = _segment(first, circle, segment_values)
+    if temporal_options.enabled:
+        previous_masks = safe_tracking_masks(previous_masks, temporal_options.boundary_margin_px)
     previous = first
     timestamps = [first_record.timestamp_s]
     top_increments: list[np.ndarray | None] = []
@@ -210,6 +254,36 @@ def run_pipeline(
     estimate_history: list[FrameRotationEstimate] = []
     qualities: list[FrameQuality] = []
     random = np.random.default_rng(int(estimate_values.get("random_seed", 7)))
+    solver_options = {
+        "limb_cull_deg": float(track_values.get("limb_cull_deg", 65.0)),
+        "ransac_iters": int(estimate_values.get("ransac_iters", 200)),
+        "ransac_inlier_deg": float(estimate_values.get("ransac_inlier_deg", 1.0)),
+        "min_inliers": int(estimate_values.get("min_inliers", 8)),
+    }
+    temporal_trackers = {}
+    absolute_history = {name: [np.eye(3)] for name in ("top", "bottom")}
+    validity_history = {name: [True] for name in ("top", "bottom")}
+    collector = (OfflineObservationCollector(
+        offline_options, matrix, sphere_center, sphere_radius, circle[2],
+        klt_config, solver_options, temporal_options,
+        seed=int(estimate_values.get("random_seed", 7)) + 701)
+        if offline_options.enabled else None)
+    if temporal_options.enabled:
+        tracker.initialize(first, previous_masks)
+        gray = cv2.cvtColor(first, cv2.COLOR_BGR2GRAY) if first.ndim == 3 else first
+        for offset, name in enumerate(("top", "bottom")):
+            temporal_trackers[name] = TemporalRotationTracker(
+                matrix, sphere_center, sphere_radius, circle[2], klt_config,
+                solver_options, temporal_options,
+                seed=int(estimate_values.get("random_seed", 7)) + offset + 1)
+            temporal_trackers[name].initialize(gray, previous_masks[name], *tracker.points(name))
+        if collector is not None:
+            collector.push(0, gray, previous_masks,
+                           {name: tracker.points(name) for name in temporal_trackers},
+                           {name: np.eye(3) for name in temporal_trackers},
+                           {name: {**temporal_trackers[name].history[0],
+                                   "sharpness": temporal_trackers[name].recent_sharpness[-1]}
+                            for name in temporal_trackers})
 
     writer = None
     resolved_overlay: Path | None = None
@@ -237,22 +311,46 @@ def run_pipeline(
                     f"frame {record.index} has shape {current.shape}, expected {previous.shape}"
                 )
             current_masks = _segment(current, circle, segment_values)
+            if temporal_options.enabled:
+                current_masks = safe_tracking_masks(current_masks, temporal_options.boundary_margin_px)
             matches = tracker.track_pair(previous, current, previous_masks, current_masks)
             estimates = solve_frame_increments(
                 matches,
                 matrix,
                 sphere_center,
                 sphere_radius,
-                limb_cull_deg=float(track_values.get("limb_cull_deg", 65.0)),
-                ransac_iters=int(estimate_values.get("ransac_iters", 200)),
-                ransac_inlier_deg=float(
-                    estimate_values.get("ransac_inlier_deg", 1.0)
-                ),
-                min_inliers=int(estimate_values.get("min_inliers", 8)),
                 rng=random,
+                **solver_options,
             )
-            top_increments.append(estimates.top.R)
-            bottom_increments.append(estimates.bottom.R)
+            statuses = {}
+            records = {}
+            if temporal_options.enabled:
+                gray = cv2.cvtColor(current, cv2.COLOR_BGR2GRAY) if current.ndim == 3 else current
+                for name, increments in (("top", top_increments), ("bottom", bottom_increments)):
+                    pose, valid, diagnostic = temporal_trackers[name].update(
+                        logical_index, gray, current_masks[name], matches[name], estimates[name],
+                        *tracker.points(name))
+                    # A recovered absolute pose spans a gap; it is not a measured
+                    # one-frame increment and must not enter axis calibration.
+                    increments.append(pose @ absolute_history[name][-1].T
+                                      if valid and validity_history[name][-1] else None)
+                    absolute_history[name].append(pose)
+                    validity_history[name].append(valid)
+                    statuses[name] = diagnostic["status"]
+                    records[name] = diagnostic
+                    if collector is not None:
+                        collector.add_adjacent(name, logical_index, matches[name], estimates[name], diagnostic)
+                        collector.add_anchors(name, logical_index, temporal_trackers[name])
+                    if diagnostic["adjacent"]["accepted"]:
+                        tracker.prune(name, matches[name].track_ids[estimates[name].inlier_mask])
+                if collector is not None:
+                    collector.push(logical_index, gray, current_masks,
+                                   {name: tracker.points(name) for name in temporal_trackers},
+                                   {name: temporal_trackers[name].prediction for name in temporal_trackers},
+                                   records)
+            else:
+                top_increments.append(estimates.top.R)
+                bottom_increments.append(estimates.bottom.R)
             match_history.append(matches)
             estimate_history.append(estimates)
             quality = _quality(logical_index, matches, estimates)
@@ -260,23 +358,87 @@ def run_pipeline(
             timestamps.append(record.timestamp_s)
             if writer is not None:
                 writer.write(
-                    _draw_pair_overlay(current, circle, logical_index, matches, estimates)
+                    _draw_pair_overlay(current, circle, logical_index, matches, estimates, statuses)
                 )
             previous = current
             previous_masks = current_masks
+            if progress is not None and logical_index % 60 == 0:
+                progress(f"Tracked {logical_index + 1} frames.")
     finally:
         if writer is not None:
             writer.release()
 
     time_array = np.asarray(timestamps, dtype=float)
-    if len(time_array) > 1 and np.any(np.diff(time_array) <= 0):
+    if not np.all(np.isfinite(time_array)) or (len(time_array) > 1 and np.any(np.diff(time_array) <= 0)):
+        if offline_options.enabled:
+            raise ValueError("offline processing requires finite, strictly increasing timestamps")
         warnings.warn(
             "input timestamps were not strictly increasing; replacing them with fps spacing",
             RuntimeWarning,
         )
         time_array = np.arange(len(time_array), dtype=float) / fps
-    top_absolute, top_valid = accumulate_increments(top_increments)
-    bottom_absolute, bottom_valid = accumulate_increments(bottom_increments)
+    if temporal_options.enabled:
+        top_absolute, bottom_absolute = (np.stack(absolute_history[name]) for name in ("top", "bottom"))
+        top_valid, bottom_valid = (np.asarray(validity_history[name], dtype=bool) for name in ("top", "bottom"))
+    else:
+        top_absolute, top_valid = accumulate_increments(top_increments)
+        bottom_absolute, bottom_valid = accumulate_increments(bottom_increments)
+    offline_report = observations = initial_rotations = initial_valid = None
+    if collector is not None:
+        observations = collector.lists()
+        initial_rotations = {"top": top_absolute.copy(), "bottom": bottom_absolute.copy()}
+        initial_valid = {"top": top_valid.copy(), "bottom": bottom_valid.copy()}
+        fitted = {}
+        for name in ("top", "bottom"):
+            if progress is not None:
+                progress(f"Refining {name} trajectory from {len(observations[name])} pixel observations...")
+            fitted[name] = refine_trajectory(observations[name], initial_rotations[name],
+                                             initial_valid[name], matrix, sphere_center,
+                                             sphere_radius, offline_options)
+        top_absolute, bottom_absolute = (fitted[name].rotations for name in ("top", "bottom"))
+        top_valid, bottom_valid = (fitted[name].valid for name in ("top", "bottom"))
+        top_increments, bottom_increments = (
+            [value.rotations[i] @ value.rotations[i - 1].T
+             if value.valid[i] and value.valid[i - 1] else None
+             for i in range(1, len(time_array))]
+            for value in (fitted["top"], fitted["bottom"]))
+        offline_report = {
+            "config": asdict(offline_options),
+            "summary": {name: {
+                **{key: value.diagnostics[key] for key in (
+                    "refined_frames", "recovered_frames", "optimized_components", "rejected_components")},
+                "unresolved_frames": np.flatnonzero(~value.valid).tolist(),
+            } for name, value in fitted.items()},
+            "shells": {name: value.diagnostics for name, value in fitted.items()},
+            "reverse_observations": collector.reverse_diagnostics,
+            "observation_identity": "Direct landmarks are scoped to their exact source image; forward LK identities are separate.",
+            "note": "Final pose validity is stored in frames.valid_top/valid_bottom; temporal and tracking-overlay diagnostics describe the forward pass.",
+        }
+    mechanical_report = unconstrained_rotations = unconstrained_valid = unconstrained_motion = None
+    mechanical_fit = None
+    if mechanical_options.enabled:
+        unconstrained_rotations = {"top": top_absolute.copy(), "bottom": bottom_absolute.copy()}
+        unconstrained_valid = {"top": top_valid.copy(), "bottom": bottom_valid.copy()}
+        unconstrained_motion = decompose_hemispheres(
+            top_absolute, bottom_absolute, R_bc, valid_top=top_valid, valid_bottom=bottom_valid)
+        if progress is not None:
+            progress("Fitting shared roll and independent shell swivel to pixel observations...")
+        mechanical_fit = refine_mechanical_trajectory(
+            observations, unconstrained_rotations, unconstrained_valid,
+            matrix, sphere_center, np.asarray(R_bc, dtype=float), radius=sphere_radius,
+            config=mechanical_options, offline_config=offline_options,
+            top_shell_sign=top_shell_sign)
+        top_absolute, bottom_absolute = (mechanical_fit.rotations[name] for name in ("top", "bottom"))
+        top_valid, bottom_valid = (mechanical_fit.valid[name] for name in ("top", "bottom"))
+        top_increments, bottom_increments = (
+            [mechanical_fit.rotations[name][i] @ mechanical_fit.rotations[name][i - 1].T
+             if mechanical_fit.valid[name][i] and mechanical_fit.valid[name][i - 1] else None
+             for i in range(1, len(time_array))] for name in ("top", "bottom"))
+        mechanical_report = mechanical_fit.diagnostics
+        offline_report["note"] = (
+            "This report describes the independent offline fit before mechanical fitting. "
+            "Final pose validity is in frames.valid_top/valid_bottom and mechanical diagnostics; "
+            "the tracking overlay describes the forward pass.")
     motion = None
     if R_bc is not None:
         motion = decompose_hemispheres(
@@ -286,6 +448,8 @@ def run_pipeline(
             valid_top=top_valid,
             valid_bottom=bottom_valid,
         )
+    if mechanical_fit is not None:
+        motion = mechanical_motion(mechanical_fit.alpha, mechanical_fit.beta, mechanical_fit.valid)
     return PipelineResult(
         timestamps_s=time_array,
         top_increments=top_increments,
@@ -305,6 +469,16 @@ def run_pipeline(
         dist=coefficients,
         frame_count=len(time_array),
         overlay_path=resolved_overlay,
+        temporal=temporal_report(temporal_options, temporal_trackers) if temporal_options.enabled else None,
+        offline=offline_report,
+        offline_observations=observations,
+        initial_rotations=initial_rotations,
+        initial_valid=initial_valid,
+        offline_landmark_sources=collector.landmark_sources if collector is not None else None,
+        mechanical=mechanical_report,
+        unconstrained_rotations=unconstrained_rotations,
+        unconstrained_valid=unconstrained_valid,
+        unconstrained_motion=unconstrained_motion,
     )
 
 
@@ -338,6 +512,7 @@ def _draw_pair_overlay(
     frame_index: int,
     matches: FrameMatches,
     estimates: FrameRotationEstimate,
+    statuses: Mapping[str, str] | None = None,
 ) -> np.ndarray:
     output = _draw_base_overlay(frame, circle, frame_index)
     for name, color in (("top", (255, 220, 0)), ("bottom", (180, 0, 255))):
@@ -364,4 +539,7 @@ def _draw_pair_overlay(
         1,
         cv2.LINE_AA,
     )
+    if statuses:
+        cv2.putText(output, "  ".join(f"{name}: {state}" for name, state in statuses.items()),
+                    (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 2, cv2.LINE_AA)
     return output

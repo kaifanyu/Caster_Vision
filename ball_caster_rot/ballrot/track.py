@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from typing import Any
 
 import cv2
@@ -70,6 +70,7 @@ class TrackMatches:
     backward_count: int = 0
     fb_error_all: np.ndarray | None = None
     source_indices: np.ndarray | None = None
+    track_ids: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         uv_prev = np.asarray(self.uv_prev, dtype=np.float64)
@@ -104,6 +105,14 @@ class TrackMatches:
         )
         if source_indices.shape != (len(uv_prev),):
             raise ValueError("source_indices must have shape (N,)")
+        track_ids = None
+        if self.track_ids is not None:
+            supplied_ids = np.asarray(self.track_ids)
+            if supplied_ids.shape != (len(uv_prev),) or supplied_ids.dtype.kind not in "iu":
+                raise ValueError("track_ids must be an integer array with shape (N,)")
+            if np.any(supplied_ids < 0) or len(np.unique(supplied_ids)) != len(supplied_ids):
+                raise ValueError("track_ids must be non-negative and unique")
+            track_ids = supplied_ids.astype(np.int64, copy=True)
 
         counts = (self.detected_count, self.forward_count, self.backward_count)
         if any(int(value) < 0 for value in counts):
@@ -121,6 +130,7 @@ class TrackMatches:
         object.__setattr__(self, "fb_error", fb_error)
         object.__setattr__(self, "fb_error_all", fb_error_all)
         object.__setattr__(self, "source_indices", source_indices)
+        object.__setattr__(self, "track_ids", track_ids)
 
     @property
     def count(self) -> int:
@@ -233,8 +243,13 @@ def track_features(
     prev_mask: np.ndarray | None = None,
     curr_mask: np.ndarray | None = None,
     config: KLTConfig | Mapping[str, Any] | None = None,
+    initial_uv_curr: np.ndarray | None = None,
 ) -> TrackMatches:
-    """Track supplied pixels forward and backward, then apply all gates."""
+    """Track pixels with optional current-image guesses and round-trip gates.
+
+    Guesses initialize an independent image alignment; they do not replace
+    the tracked pixels. ``source_indices`` always indexes ``uv_prev``.
+    """
 
     cfg = config if isinstance(config, KLTConfig) else KLTConfig.from_mapping(config)
     previous = _as_gray(prev_gray)
@@ -249,6 +264,11 @@ def track_features(
     points = np.asarray(uv_prev, dtype=np.float32)
     if points.ndim != 2 or points.shape[1:] != (2,):
         raise ValueError("uv_prev must have shape (N, 2)")
+    guesses = None
+    if initial_uv_curr is not None:
+        guesses = np.array(initial_uv_curr, dtype=np.float32, copy=True, order="C")
+        if guesses.shape != points.shape or not np.all(np.isfinite(guesses)):
+            raise ValueError("initial_uv_curr must contain finite pixels with shape (N, 2)")
     detected_count = len(points)
     if detected_count == 0:
         return TrackMatches.empty()
@@ -265,8 +285,14 @@ def track_features(
         ),
         "minEigThreshold": cfg.min_eig_threshold,
     }
+    if guesses is not None:
+        lk_params["flags"] = cv2.OPTFLOW_USE_INITIAL_FLOW
     forward, status_forward, _ = cv2.calcOpticalFlowPyrLK(
-        previous, current, points.reshape(-1, 1, 2), None, **lk_params
+        previous,
+        current,
+        points.reshape(-1, 1, 2),
+        None if guesses is None else guesses.reshape(-1, 1, 2),
+        **lk_params,
     )
     if forward is None or status_forward is None:
         return TrackMatches.empty(detected_count=detected_count)
@@ -290,7 +316,7 @@ def track_features(
         current,
         previous,
         forward[forward_indices].reshape(-1, 1, 2),
-        None,
+        None if guesses is None else points[forward_indices].reshape(-1, 1, 2).copy(),
         **lk_params,
     )
     if backward is None or status_backward is None:
@@ -410,6 +436,145 @@ class KLTTracker:
             bottom_current_mask,
         )
         return FrameMatches(top=top, bottom=bottom)
+
+
+class PersistentKLTTracker:
+    """Carry feature identities forward and replenish only vacant locations.
+
+    Call ``initialize`` on the first image, then ``track_pair`` in image order.
+    IDs are unique across both shells for this tracker's lifetime, including
+    after reinitialization. ``points`` includes newly seeded features on the
+    current image, while returned matches contain only observed tracks.
+    """
+
+    def __init__(self, config: KLTConfig | Mapping[str, Any] | None = None) -> None:
+        self.config = (
+            config if isinstance(config, KLTConfig) else KLTConfig.from_mapping(config)
+        )
+        self._next_id = 0
+        self._shape: tuple[int, int] | None = None
+        self._points: dict[str, np.ndarray] = {}
+        self._ids: dict[str, np.ndarray] = {}
+        self._last_tested: dict[str, np.ndarray] = {}
+
+    @staticmethod
+    def _check_name(name: str) -> None:
+        if name not in {"top", "bottom"}:
+            raise KeyError(name)
+
+    def initialize(self, frame: np.ndarray, masks: Any) -> None:
+        gray = _as_gray(frame)
+        self._shape = gray.shape
+        for name in ("top", "bottom"):
+            self._points[name] = np.empty((0, 2), dtype=np.float64)
+            self._ids[name] = np.empty(0, dtype=np.int64)
+            self._last_tested[name] = np.empty(0, dtype=np.int64)
+            self._replenish(name, gray, _hemisphere_mask(masks, name))
+
+    def points(self, name: str) -> tuple[np.ndarray, np.ndarray]:
+        """Return independent copies of current-image pixels and their IDs."""
+
+        self._check_name(name)
+        if self._shape is None:
+            raise RuntimeError("initialize the persistent tracker before reading points")
+        return self._points[name].copy(), self._ids[name].copy()
+
+    def prune(self, name: str, allowed_ids: np.ndarray) -> None:
+        """Drop rejected tracks, preserving reseeds not tested in the last pair.
+
+        Pass the RANSAC inlier IDs from the last returned matches. Newly seeded
+        current-image features have no rotation estimate yet and are retained.
+        Vacancies are replenished on the next call to ``track_pair``.
+        """
+
+        self._check_name(name)
+        if self._shape is None:
+            raise RuntimeError("initialize the persistent tracker before pruning")
+        keep = ~np.isin(self._ids[name], self._last_tested[name]) | np.isin(
+            self._ids[name], np.asarray(allowed_ids, dtype=np.int64)
+        )
+        self._points[name] = self._points[name][keep]
+        self._ids[name] = self._ids[name][keep]
+
+    def _replenish(self, name: str, gray: np.ndarray, mask: np.ndarray) -> None:
+        detection_mask = _as_cv_mask(mask, gray.shape)
+        existing = self._points[name]
+        keep = _points_in_mask(existing, detection_mask)
+        existing = existing[keep]
+        self._ids[name] = self._ids[name][keep]
+        self._points[name] = existing
+        remaining = self.config.max_corners - len(existing)
+        if remaining <= 0:
+            return
+        exclusion_radius = int(np.ceil(self.config.min_distance_px))
+        for point in existing:
+            cv2.circle(
+                detection_mask,
+                tuple(np.rint(point).astype(int)),
+                exclusion_radius,
+                0,
+                thickness=-1,
+            )
+        candidates = detect_features(
+            gray, detection_mask, replace(self.config, max_corners=remaining)
+        )
+        # Mask rasterization rounds subpixel locations; retain the exact spacing
+        # condition too so a newly detected point cannot duplicate a live track.
+        if len(existing) and len(candidates):
+            squared_distance = np.sum(
+                (candidates[:, None, :] - existing[None, :, :]) ** 2, axis=2
+            )
+            candidates = candidates[
+                np.all(squared_distance > self.config.min_distance_px**2, axis=1)
+            ]
+        count = len(candidates)
+        if count:
+            new_ids = np.arange(self._next_id, self._next_id + count, dtype=np.int64)
+            self._next_id += count
+            self._points[name] = np.concatenate([existing, candidates], axis=0)
+            self._ids[name] = np.concatenate([self._ids[name], new_ids])
+
+    def track_pair(
+        self,
+        prev_frame: np.ndarray,
+        curr_frame: np.ndarray,
+        prev_masks: Any,
+        curr_masks: Any | None = None,
+    ) -> FrameMatches:
+        """Advance both shells; initialize automatically on the first pair.
+
+        If omitted, current masks are assumed unchanged from previous masks.
+        """
+
+        previous = _as_gray(prev_frame)
+        current = _as_gray(curr_frame)
+        if current.shape != previous.shape:
+            raise ValueError("consecutive frames must have the same dimensions")
+        if self._shape is None:
+            self.initialize(previous, prev_masks)
+        if self._shape != previous.shape:
+            raise ValueError("frame dimensions changed; reinitialize the persistent tracker")
+        current_masks = prev_masks if curr_masks is None else curr_masks
+        tracked: dict[str, TrackMatches] = {}
+        for name in ("top", "bottom"):
+            previous_mask = _hemisphere_mask(prev_masks, name)
+            current_mask = _hemisphere_mask(current_masks, name)
+            self._replenish(name, previous, previous_mask)
+            result = track_features(
+                previous,
+                current,
+                self._points[name],
+                prev_mask=previous_mask,
+                curr_mask=current_mask,
+                config=self.config,
+            )
+            ids = self._ids[name][result.source_indices]
+            tracked[name] = replace(result, track_ids=ids)
+            self._points[name] = result.uv_curr.copy()
+            self._ids[name] = ids.copy()
+            self._last_tested[name] = ids.copy()
+            self._replenish(name, current, current_mask)
+        return FrameMatches(top=tracked["top"], bottom=tracked["bottom"])
 
 
 def track_frame_pair(

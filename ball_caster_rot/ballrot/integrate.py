@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -90,6 +90,31 @@ class DecomposedMotion:
     gamma_bottom: np.ndarray
     valid_top: np.ndarray
     valid_bottom: np.ndarray
+
+
+def mechanical_motion(
+    alpha: np.ndarray, beta: Mapping[str, np.ndarray], valid: Mapping[str, np.ndarray]
+) -> DecomposedMotion:
+    """Export joint coordinates without re-decomposing or averaging Euler angles.
+
+    A visible shell can support common roll, but never the other shell's spin.
+    Missing measurements stay missing even if a renderer holds a display pose.
+    """
+    roll = np.asarray(alpha, dtype=float)
+    vt, vb = (np.asarray(valid[name], dtype=bool) for name in ("top", "bottom"))
+    bt, bb = (np.asarray(beta[name], dtype=float) for name in ("top", "bottom"))
+    if roll.ndim != 1 or any(a.shape != roll.shape for a in (vt, vb, bt, bb)):
+        raise ValueError("mechanical coordinates and validity must have matching (N,) shapes")
+    if (not np.all(np.isfinite(roll[vt | vb]))
+            or not np.all(np.isfinite(bt[vt])) or not np.all(np.isfinite(bb[vb]))):
+        raise ValueError("valid mechanical coordinates must be finite")
+    return DecomposedMotion(
+        alpha=np.where(vt | vb, roll, np.nan),
+        beta_top=np.where(vt, bt, np.nan), beta_bottom=np.where(vb, bb, np.nan),
+        alpha_top=np.where(vt, roll, np.nan), alpha_bottom=np.where(vb, roll, np.nan),
+        gamma_top=np.where(vt, 0.0, np.nan), gamma_bottom=np.where(vb, 0.0, np.nan),
+        valid_top=vt.copy(), valid_bottom=vb.copy(),
+    )
 
 
 def decompose_hemispheres(

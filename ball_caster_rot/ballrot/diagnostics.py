@@ -16,6 +16,7 @@ import numpy as np
 
 from .integrate import DecomposedMotion, angular_velocity
 from .rotation import geodesic_angle
+from .trajectory import angular_rates, rotation_rates
 
 
 @dataclass
@@ -119,6 +120,21 @@ def summarize_quality(
     return summary
 
 
+def unconstrained_result(
+    motion: DecomposedMotion, top_absolute: np.ndarray, bottom_absolute: np.ndarray,
+    qualities: Sequence[FrameQuality],
+) -> dict[str, Any]:
+    """Keep the independent estimates available when a joint model is fitted."""
+    return {
+        "note": "Independent estimates before mechanical constraints; missing poses remain invalid.",
+        "angle_unit": "radians",
+        "frames": asdict(motion),
+        "top_absolute": np.asarray(top_absolute),
+        "bottom_absolute": np.asarray(bottom_absolute),
+        "summary": summarize_quality(qualities, motion, top_absolute, bottom_absolute),
+    }
+
+
 def write_run_outputs(
     output_dir: str | Path,
     timestamps_s: np.ndarray,
@@ -129,6 +145,10 @@ def write_run_outputs(
     *,
     metadata: Mapping[str, Any] | None = None,
     extra_summary: Mapping[str, Any] | None = None,
+    temporal: Mapping[str, Any] | None = None,
+    offline: Mapping[str, Any] | None = None,
+    mechanical: Mapping[str, Any] | None = None,
+    unconstrained: Mapping[str, Any] | None = None,
 ) -> dict[str, Path]:
     """Write the results CSV/JSON and diagnostic plots.
 
@@ -147,6 +167,34 @@ def write_run_outputs(
         "beta_top": angular_velocity(motion.beta_top, times),
         "beta_bottom": angular_velocity(motion.beta_bottom, times),
     }
+    camera_rates = {}
+    rate_metadata = None
+    mechanically_fitted = bool(mechanical is not None and mechanical.get("config", {}).get("enabled", False))
+    if mechanically_fitted or (offline is not None and offline.get("config", {}).get("enabled", False)):
+        options = (mechanical.get("offline_config", (offline or {}).get("config", {}))
+                   if mechanically_fitted else offline["config"])
+        rate_options = {"window_s": float(options.get("rate_window_s", 0.25)),
+                        "polynomial_order": int(options.get("rate_polynomial_order", 2))}
+        velocities = {
+            # Independent poses need both shells for a consistent average;
+            # a joint fit estimates the same roll from either visible shell.
+            "alpha": angular_rates(motion.alpha, times,
+                                   (motion.valid_top | motion.valid_bottom) if mechanically_fitted
+                                   else (motion.valid_top & motion.valid_bottom), **rate_options),
+            "beta_top": angular_rates(motion.beta_top, times, motion.valid_top, **rate_options),
+            "beta_bottom": angular_rates(motion.beta_bottom, times, motion.valid_bottom, **rate_options),
+        }
+        camera_rates = {name: rotation_rates(poses, times, valid, **rate_options)
+                        for name, poses, valid in (
+                            ("top", top_absolute, motion.valid_top),
+                            ("bottom", bottom_absolute, motion.valid_bottom))}
+        rate_metadata = {
+            "method": "local_polynomial_on_native_timestamps", **rate_options,
+            "shared_roll_support": ("either shell valid under shared-roll model" if mechanically_fitted
+                                    else "both shells valid"),
+            "camera_omega_convention": "spatial angular velocity: dR/dt = skew(omega) @ R",
+            "note": "Rates do not bridge invalid poses. Short segments yield missing rates. The window can attenuate fast responses; poses are not smoothed.",
+        }
 
     quality_by_frame = {item.frame_index: item for item in qualities}
     csv_path = output / "results.csv"
@@ -172,7 +220,24 @@ def write_run_outputs(
         "bottom_residual_deg",
         "top_tracked",
         "bottom_tracked",
+        "top_pose_valid",
+        "bottom_pose_valid",
     ]
+    fields += [f"omega_{name}_camera_{axis}_rad_s" for name in camera_rates for axis in "xyz"]
+    offline_status = {}
+    if offline is not None:
+        offline_status = {
+            name: {entry["frame_index"]: entry["status"]
+                   for entry in offline.get("shells", {}).get(name, {}).get("frames", [])}
+            for name in ("top", "bottom")}
+        fields += [f"{name}_offline_status" for name in offline_status]
+    mechanical_status = {}
+    if mechanical is not None:
+        mechanical_status = {
+            name: {entry["frame_index"]: entry["status"]
+                   for entry in mechanical.get("frames", {}).get(name, [])}
+            for name in ("top", "bottom")}
+        fields += [f"{name}_mechanical_status" for name in mechanical_status]
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
@@ -203,6 +268,15 @@ def write_run_outputs(
                     "bottom_residual_deg": bottom_q.mean_residual_deg,
                     "top_tracked": top_q.matched_count,
                     "bottom_tracked": bottom_q.matched_count,
+                    "top_pose_valid": bool(motion.valid_top[index]),
+                    "bottom_pose_valid": bool(motion.valid_bottom[index]),
+                    **{f"omega_{name}_camera_{axis}_rad_s": values[index, component]
+                       for name, values in camera_rates.items()
+                       for component, axis in enumerate("xyz")},
+                    **{f"{name}_offline_status": values.get(index, "unavailable")
+                       for name, values in offline_status.items()},
+                    **{f"{name}_mechanical_status": values.get(index, "unavailable")
+                       for name, values in mechanical_status.items()},
                 }
             )
 
@@ -211,6 +285,14 @@ def write_run_outputs(
     )
     if extra_summary:
         summary = {**summary, **dict(extra_summary)}
+    if mechanically_fitted:
+        summary["mechanical_tracking"] = mechanical.get("summary", {})
+        summary["constraint_metrics_note"] = (
+            "Zero gamma and agreement of shell roll are enforced by the model, "
+            "not independent accuracy checks. Use image residuals, unresolved frames, "
+            "and the preserved unconstrained checks to audit the fit.")
+        if unconstrained is not None:
+            summary["unconstrained_checks"] = unconstrained.get("summary", {})
     results_json_path = output / "results.json"
     payload = {
         "metadata": dict(metadata or {}),
@@ -227,9 +309,23 @@ def write_run_outputs(
             "alpha_bottom_rad": motion.alpha_bottom.tolist(),
             "gamma_top_rad": motion.gamma_top.tolist(),
             "gamma_bottom_rad": motion.gamma_bottom.tolist(),
+            "valid_top": motion.valid_top.tolist(),
+            "valid_bottom": motion.valid_bottom.tolist(),
         },
         "quality": [asdict(item) for item in qualities],
     }
+    if temporal is not None:
+        payload["temporal"] = dict(temporal)
+    if offline is not None:
+        payload["offline"] = dict(offline)
+    if mechanical is not None:
+        payload["mechanical"] = dict(mechanical)
+    if unconstrained is not None:
+        payload["unconstrained"] = dict(unconstrained)
+    if rate_metadata is not None:
+        payload["metadata"]["rate_processing"] = rate_metadata
+        payload["frames"].update({f"omega_{name}_camera_rad_s": values
+                                  for name, values in camera_rates.items()})
     results_json_path.write_text(
         json.dumps(_json_clean(payload), indent=2, allow_nan=False), encoding="utf-8"
     )

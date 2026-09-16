@@ -1,5 +1,5 @@
 input:
-  path: data/clip.mp4
+  path: data/upright/clip.mkv
   type: auto
   max_frames: null
   fps_override: null
@@ -25,30 +25,30 @@ camera:
   - 0.000899
   fov_deg: 68.6
 circle:
-  u0: 837.8455590056461
-  v0: 687.4176614676895
-  r_px: 374.13312078382785
+  u0: 949.9862683729565
+  v0: 512.0916918321674
+  r_px: 444.07569880036664
   refit_each_frame: false
 segment:
   mode: color
   top_hsv:
     lo:
-    - 165
-    - 50
-    - 40
+    - 175
+    - 87
+    - 48
     hi:
-    - 20
+    - 10
     - 255
     - 255
   bottom_hsv:
     lo:
-    - 38
-    - 45
-    - 25
+    - 60
+    - 8
+    - 0
     hi:
-    - 88
-    - 255
-    - 255
+    - 95
+    - 211
+    - 231
   yoke_hsv:
     lo:
     - 0
@@ -56,8 +56,8 @@ segment:
     - 0
     hi:
     - 179
-    - 255
-    - 65
+    - 126
+    - 43
     enabled: true
   morphology_px: 3
   grow_px: 17.0
@@ -81,17 +81,55 @@ estimate:
   ransac_inlier_deg: 1.0
   min_inliers: 8
   random_seed: 7
+temporal:
+  enabled: true
+  correction_interval: 3
+  keyframe_interval: 8
+  max_keyframes: 3
+  max_keyframe_age: 45
+  min_inliers: 20
+  min_inlier_ratio: 0.7
+  max_residual_deg: 0.5
+  min_spread_fraction: 0.025
+  min_sharpness_ratio: 0.3
+  keyframe_sharpness_ratio: 0.8
+  max_keyframe_rotation_deg: 30.0
+  max_correction_deg: 5.0
+  max_anchor_disagreement_deg: 3.0
+  boundary_margin_px: 3
+offline:
+  enabled: true
+  min_track_length: 3
+  max_tracks_per_frame: 100
+  robust_loss_scale_px: 1.0
+  # The 557-frame mechanical fit required 91 evaluations after track-selection repair.
+  max_nfev: 200
+  min_observations_per_frame: 12
+  max_pose_change_deg: 5.0
+  max_reprojection_px: 2.0
+  min_inlier_fraction: 0.7
+  min_spatial_spread_fraction: 0.04
+  limb_cull_deg: 65.0
+  recover_invalid_frames: true
+  backward_window_frames: 12
+  backward_stride: 3
+  rate_window_s: 0.25
+  rate_polynomial_order: 2
+mechanical:
+  enabled: true
+  gap_fraction: 0.1
 frame_calib:
+  initial_roll_deg: 0.0
   R_bc:
-  - - 0.16430254056862836
-    - 0.9857587785293893
-    - -0.03583721131646278
-  - - -0.09908873642219858
-    - 0.05264111243302122
-    - 0.993685229635656
-  - - 0.9814204488785356
-    - -0.15971394376841552
-    - 0.10632666029267128
+  - - -0.010130905684456064
+    - 0.9999385029791771
+    - 0.004511652665594159
+  - - 0.25886403418410125
+    - 0.006980710037309739
+    - -0.96588854506786
+  - - -0.9658606403389389
+    - -0.008617421141925824
+    - -0.25891883573219926
 output:
   dir: out/real
   save_overlay_video: true

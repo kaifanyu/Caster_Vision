@@ -209,8 +209,10 @@ class Trajectory:
     ``gamma_top``/``gamma_bottom`` are the off-model rotation about ball ``+y``
     reported by :func:`ballrot.rotation.decompose_alpha_beta`.  They default to
     zero, which is the caster's two-degree-of-freedom manifold.  Supplying them
-    lets a caller replay a *measured* orientation exactly, including whatever
-    part of it left that manifold.
+    lets a caller replay a *measured* orientation, including whatever part of
+    it left that manifold. ``alpha_top``/``alpha_bottom`` default to the shared
+    ``alpha``; provide them too when the measured shell rolls disagree, to
+    preserve each shell's full XYZ rotation rather than averaging it away.
     """
 
     alpha: Array
@@ -220,6 +222,8 @@ class Trajectory:
     name: str = "custom"
     gamma_top: Array | None = None
     gamma_bottom: Array | None = None
+    alpha_top: Array | None = None
+    alpha_bottom: Array | None = None
 
     def __post_init__(self) -> None:
         alpha = np.asarray(self.alpha, dtype=np.float64).reshape(-1)
@@ -235,17 +239,21 @@ class Trajectory:
             if self.gamma_bottom is None
             else np.asarray(self.gamma_bottom, dtype=np.float64).reshape(-1)
         )
+        alpha_top = alpha.copy() if self.alpha_top is None else np.asarray(self.alpha_top, dtype=np.float64).reshape(-1)
+        alpha_bottom = alpha.copy() if self.alpha_bottom is None else np.asarray(self.alpha_bottom, dtype=np.float64).reshape(-1)
         if len(alpha) < 2:
             raise ValueError("a trajectory needs at least two frames")
         if len(alpha) != len(beta_top) or len(alpha) != len(beta_bottom):
             raise ValueError("alpha, beta_top, and beta_bottom lengths must match")
         if len(alpha) != len(gamma_top) or len(alpha) != len(gamma_bottom):
             raise ValueError("gamma lengths must match alpha")
+        if len(alpha_top) != len(alpha) or len(alpha_bottom) != len(alpha):
+            raise ValueError("per-shell alpha lengths must match alpha")
         if self.fps <= 0 or not np.isfinite(self.fps):
             raise ValueError("fps must be positive and finite")
         if not all(
             np.isfinite(values).all()
-            for values in (alpha, beta_top, beta_bottom, gamma_top, gamma_bottom)
+            for values in (alpha, beta_top, beta_bottom, gamma_top, gamma_bottom, alpha_top, alpha_bottom)
         ):
             raise ValueError("trajectory values must be finite")
         object.__setattr__(self, "alpha", alpha)
@@ -253,6 +261,8 @@ class Trajectory:
         object.__setattr__(self, "beta_bottom", beta_bottom)
         object.__setattr__(self, "gamma_top", gamma_top)
         object.__setattr__(self, "gamma_bottom", gamma_bottom)
+        object.__setattr__(self, "alpha_top", alpha_top)
+        object.__setattr__(self, "alpha_bottom", alpha_bottom)
 
     @property
     def num_frames(self) -> int:
@@ -272,6 +282,8 @@ class Trajectory:
             beta_bottom=self.beta_bottom * factor,
             gamma_top=self.gamma_top * factor,
             gamma_bottom=self.gamma_bottom * factor,
+            alpha_top=self.alpha_top * factor,
+            alpha_bottom=self.alpha_bottom * factor,
             name=self.name if np.isclose(factor, 1.0) else f"{self.name}_speed_{factor:g}x",
         )
 
@@ -395,8 +407,17 @@ class RenderConfig:
     degradations: Degradations = field(default_factory=Degradations)
     frame_prefix: str = "frame_"
     image_extension: str = ".png"
+    # Physical rim-plane separation divided by sphere diameter. The two
+    # rigid caps share one centre; the removed equatorial band is not a
+    # screen-space margin or a translation fitted independently per shell.
+    gap_fraction: float = 0.0
+    _front_normals: Array | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if not np.isfinite(self.gap_fraction) or not 0.0 <= self.gap_fraction < 1.0:
+            raise ValueError("gap_fraction must be finite and in [0, 1)")
+        if self.gap_fraction > 0.0:
+            object.__setattr__(self, "_front_normals", _front_surface_normals(self.camera))
         if self.num_speckles < 20:
             raise ValueError("num_speckles must be at least 20")
         if self.dot_radius_px <= 0:
@@ -467,6 +488,35 @@ def _base_image(config: RenderConfig) -> Array:
     return image
 
 
+def _front_surface_normals(camera: CameraSetup) -> Array:
+    """Camera-space surface normal at each front-facing sphere pixel."""
+
+    height, width = camera.image_size
+    yy, xx = np.mgrid[:height, :width]
+    pixels = np.stack([xx, yy, np.ones_like(xx)], axis=-1)
+    rays = pixels @ np.linalg.inv(camera.K).T
+    ray_norm2 = np.sum(rays * rays, axis=-1)
+    ray_center = rays @ camera.C
+    discriminant = ray_center**2 - ray_norm2 * (
+        camera.C @ camera.C - camera.radius**2
+    )
+    distance = (ray_center - np.sqrt(np.maximum(discriminant, 0.0))) / ray_norm2
+    normals = (distance[..., None] * rays - camera.C) / camera.radius
+    normals[(discriminant < 0.0) | (distance <= 0.0)] = np.nan
+    return normals.astype(np.float32)
+
+
+def _apply_cap_gap(image: Array, config: RenderConfig, alpha: float) -> None:
+    """Remove the projected equatorial band between two rigid cap rims."""
+
+    if config.gap_fraction == 0.0:
+        return
+    pole = config.camera.R_bc @ _rx(alpha)[:, 2]
+    axial_coordinate = config._front_normals @ pole
+    gap = np.abs(axial_coordinate) < config.gap_fraction
+    image[gap] = np.asarray(config.background_color_bgr, dtype=np.uint8)
+
+
 def _speckle_attributes(config: RenderConfig) -> tuple[Array, Array, Array, Array]:
     """Return points, radii, brightness scales, and a stable density mask."""
 
@@ -484,6 +534,7 @@ def _speckle_attributes(config: RenderConfig) -> tuple[Array, Array, Array, Arra
     keep_n = max(20, int(round(config.num_speckles * config.degradations.density_scale)))
     density_mask = np.zeros(config.num_speckles, dtype=bool)
     density_mask[order[:keep_n]] = True
+    density_mask &= np.abs(points[:, 2]) >= config.gap_fraction
     return points, radii, brightness, density_mask
 
 
@@ -593,7 +644,8 @@ def _render_subframe(
     rng: np.random.Generator,
 ) -> Array:
     image = _base_image(config)
-    alpha = _interpolate(trajectory.alpha, frame_position)
+    alpha_top = _interpolate(trajectory.alpha_top, frame_position)
+    alpha_bottom = _interpolate(trajectory.alpha_bottom, frame_position)
     beta_top = _interpolate(trajectory.beta_top, frame_position)
     beta_bottom = _interpolate(trajectory.beta_bottom, frame_position)
     gamma_top = _interpolate(trajectory.gamma_top, frame_position)
@@ -604,7 +656,7 @@ def _render_subframe(
         top_indices,
         radii,
         brightness,
-        _motion_matrix(alpha, beta_top, gamma_top),
+        _motion_matrix(alpha_top, beta_top, gamma_top),
         config.top_color_bgr,
         config,
         rng,
@@ -615,12 +667,15 @@ def _render_subframe(
         bottom_indices,
         radii,
         brightness,
-        _motion_matrix(alpha, beta_bottom, gamma_bottom),
+        _motion_matrix(alpha_bottom, beta_bottom, gamma_bottom),
         config.bottom_color_bgr,
         config,
         rng,
     )
     _apply_ball_mask(image, config)
+    if config.gap_fraction > 0.0:
+        _apply_glare(image, config)
+        _apply_cap_gap(image, config, alpha_top)
     return image
 
 
@@ -660,7 +715,8 @@ def _render_frame(
             rng,
         ).astype(np.float64)
     image = np.clip(np.rint(accumulated / len(offsets)), 0, 255).astype(np.uint8)
-    _apply_glare(image, config)
+    if config.gap_fraction == 0.0:
+        _apply_glare(image, config)
     _apply_yoke(image, config)
     return image
 
@@ -669,13 +725,13 @@ def _matrix_series(trajectory: Trajectory) -> tuple[list[Array], list[Array]]:
     top = [
         _motion_matrix(alpha, beta, gamma)
         for alpha, beta, gamma in zip(
-            trajectory.alpha, trajectory.beta_top, trajectory.gamma_top
+            trajectory.alpha_top, trajectory.beta_top, trajectory.gamma_top
         )
     ]
     bottom = [
         _motion_matrix(alpha, beta, gamma)
         for alpha, beta, gamma in zip(
-            trajectory.alpha, trajectory.beta_bottom, trajectory.gamma_bottom
+            trajectory.alpha_bottom, trajectory.beta_bottom, trajectory.gamma_bottom
         )
     ]
     return top, bottom
@@ -736,6 +792,8 @@ def _ground_truth(
         "R_bc": camera.R_bc.tolist(),
         "C": camera.C.tolist(),
         "radius": camera.radius,
+        "gap_fraction": config.gap_fraction,
+        "rim_plane_separation": 2.0 * camera.radius * config.gap_fraction,
         "circle": {"u0": camera.circle[0], "v0": camera.circle[1], "r_px": camera.circle[2]},
         "camera": {
             "K": camera.K.tolist(),
@@ -750,6 +808,8 @@ def _ground_truth(
             },
         },
         "alpha": trajectory.alpha.tolist(),
+        "alpha_top": trajectory.alpha_top.tolist(),
+        "alpha_bottom": trajectory.alpha_bottom.tolist(),
         "beta_top": trajectory.beta_top.tolist(),
         "beta_bottom": trajectory.beta_bottom.tolist(),
         "R_top": _to_lists(top_ball),
@@ -834,6 +894,15 @@ def render_sequence(
 
     config = config or RenderConfig()
     trajectory = trajectory.scaled(config.degradations.speed_scale)
+    if config.gap_fraction > 0.0:
+        same_roll = np.allclose(
+            np.sin((trajectory.alpha_top - trajectory.alpha_bottom) / 2.0),
+            0.0, atol=1e-10,
+        )
+        zero_tilt = (np.allclose(trajectory.gamma_top, 0.0, atol=1e-10)
+                     and np.allclose(trajectory.gamma_bottom, 0.0, atol=1e-10))
+        if not same_roll or not zero_tilt:
+            raise ValueError("A fixed cap gap requires shared roll and zero sideways tilt")
     output_path = Path(output_dir).expanduser().resolve() if output_dir is not None else None
     frames_dir: Path | None = None
     ground_truth_path: Path | None = None

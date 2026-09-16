@@ -32,7 +32,9 @@ from ballrot.config import (
     update_yaml,
 )
 from ballrot.io_frames import FrameSource
+from ballrot.pipeline import _segment
 from ballrot.segment import threshold_hsv
+from ballrot.temporal import TemporalConfig, safe_tracking_masks
 
 CLASSES = ("top", "bottom", "yoke")
 
@@ -83,24 +85,45 @@ def _preview(
     hsv: np.ndarray,
     samples: dict[str, list[np.ndarray]],
     circle: tuple[float, float, float] | None,
+    *,
+    config: dict | None = None,
+    hue_margin: float = 6.0,
+    sv_margin: int = 30,
 ) -> np.ndarray:
-    """Tint the frame with the ranges the current samples would produce."""
+    """Preview the masks tracking will use with the proposed saved ranges.
+
+    Unsampled classes retain their configured ranges. With a fitted circle,
+    include growth, shell separation, yoke exclusion and the tracking margin.
+    Without enough geometry/ranges, show only the available color thresholds.
+    """
 
     display = frame.copy()
     colors = {"top": (255, 255, 0), "bottom": (255, 0, 255), "yoke": (0, 0, 255)}
+    settings = dict((config or {}).get("segment", {}))
+    for name in CLASSES:
+        if samples[name]:
+            settings[f"{name}_hsv"] = _range(
+                samples[name], dark_object=name == "yoke",
+                hue_margin=hue_margin, sv_margin=sv_margin)
+    if circle is not None and all(settings.get(f"{name}_hsv") for name in ("top", "bottom")):
+        masks = _segment(frame, circle, settings)
+        temporal = TemporalConfig.from_mapping((config or {}).get("temporal"))
+        if temporal.enabled:
+            masks = safe_tracking_masks(masks, temporal.boundary_margin_px)
+        tint = display.copy()
+        for name in CLASSES:
+            tint[masks[name]] = colors[name]
+        return cv2.addWeighted(display, 0.55, tint, 0.45, 0)
     inside = np.ones(frame.shape[:2], dtype=bool)
     if circle is not None:
         yy, xx = np.ogrid[: frame.shape[0], : frame.shape[1]]
         inside = (xx - circle[0]) ** 2 + (yy - circle[1]) ** 2 <= circle[2] ** 2
     tint = display.copy()
     for name in CLASSES:
-        if not samples[name]:
+        fitted = settings.get(f"{name}_hsv")
+        if not fitted or not fitted.get("enabled", True):
             continue
-        try:
-            fitted = _range(samples[name], dark_object=name == "yoke")
-            tint[threshold_hsv(hsv, fitted) & inside] = colors[name]
-        except ValueError:
-            continue
+        tint[threshold_hsv(hsv, fitted) & inside] = colors[name]
     return cv2.addWeighted(display, 0.55, tint, 0.45, 0)
 
 
@@ -201,11 +224,15 @@ def main() -> int:
     print("Keys: T/B/Y class | N or . next frame | P or , previous | 0 first")
     print("      SPACE toggle mask preview | R reset active class | U undo last")
     print("      ENTER finish | Q/Esc cancel")
+    print("Preview includes tracking-mask growth, separation, yoke exclusion and boundary margin when circle/ranges are set.")
+    print("Unsampled classes show their saved ranges. Sample only painted marks for T/B; avoid white rims, holes and the yoke.")
     while True:
         index, frame = frames[position[0]]
         hsv = hsv_frames[position[0]]
         display = (
-            _preview(frame, hsv, samples, circle) if show_preview[0] else frame.copy()
+            _preview(frame, hsv, samples, circle, config=config,
+                     hue_margin=args.hue_margin, sv_margin=args.sv_margin)
+            if show_preview[0] else frame.copy()
         )
         if circle is not None:
             cv2.circle(
@@ -224,7 +251,10 @@ def main() -> int:
             f"sampling {active[0].upper()}   frame {index}  "
             f"({position[0] + 1}/{len(frames)})",
             counts,
-            "preview ON (SPACE)" if show_preview[0] else "preview OFF (SPACE)",
+            ("tracking masks ON (SPACE)" if circle is not None
+             and all(config.get("segment", {}).get(f"{name}_hsv") or samples[name]
+                     for name in ("top", "bottom")) else "HSV colors only (circle/ranges unset)")
+            if show_preview[0] else "preview OFF (SPACE)",
         )
         for row, text in enumerate(lines):
             cv2.putText(

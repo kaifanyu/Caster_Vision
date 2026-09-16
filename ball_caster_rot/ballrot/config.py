@@ -88,6 +88,26 @@ def configured_frame(camera_frame: Mapping[str, Any]) -> np.ndarray | None:
     return matrix
 
 
+def measurement_frame(camera_frame: Mapping[str, Any]) -> np.ndarray | None:
+    """Map the clip's initial ball axes into camera coordinates.
+
+    ``R_bc`` remains the home-pose calibration. A clip starting at a different
+    roll uses ``R_bc @ Rx(initial_roll_deg)`` for relative-motion decomposition.
+    The offset rotates the reference frame; adding it to already decomposed
+    angles would not correct spin/roll mixing.
+    """
+    from .rotation import Rx
+
+    angle = float(camera_frame.get("initial_roll_deg", 0.0))
+    if not np.isfinite(angle):
+        raise ValueError("frame_calib.initial_roll_deg must be finite")
+    sign = camera_frame.get("top_shell_sign", 1)
+    if isinstance(sign, bool) or sign not in (-1, 1):
+        raise ValueError("frame_calib.top_shell_sign must be +1 or -1")
+    home = configured_frame(camera_frame)
+    return None if home is None else home @ Rx(np.deg2rad(angle))
+
+
 def update_yaml(path: str | Path, updates: Mapping[str, Any]) -> None:
     """Recursively update a YAML mapping and write it back atomically."""
 
@@ -108,4 +128,3 @@ def _deep_update(target: MutableMapping[str, Any], values: Mapping[str, Any]) ->
             _deep_update(target[key], value)
         else:
             target[key] = copy.deepcopy(value)
-
