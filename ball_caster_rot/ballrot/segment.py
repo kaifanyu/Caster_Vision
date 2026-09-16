@@ -9,11 +9,52 @@ bugs in the rest of the pipeline.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 import cv2
 import numpy as np
+
+
+@dataclass(frozen=True)
+class PaintSupportConfig:
+    """Restrict tracking to colored paint and a small surrounding surface band.
+
+    This image-based filter suppresses weakly colored openings and exposed
+    interior surfaces. It does not identify every physical rim: a boundary
+    immediately beside real paint still needs the normal tracking margin.
+    """
+
+    enabled: bool = False
+    min_saturation: int = 30
+    min_value: int = 40
+    max_distance_px: float = 17.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, (bool, np.bool_)):
+            raise ValueError("paint_support.enabled must be boolean")
+        for name in ("min_saturation", "min_value"):
+            value = getattr(self, name)
+            if (isinstance(value, (bool, np.bool_))
+                    or not isinstance(value, (int, np.integer))
+                    or not 0 <= value <= 255):
+                raise ValueError(f"paint_support.{name} must be an integer in [0, 255]")
+        value = self.max_distance_px
+        if (isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, float, np.integer, np.floating))
+                or not np.isfinite(value) or value < 0):
+            raise ValueError("paint_support.max_distance_px must be finite and nonnegative")
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any] | None) -> PaintSupportConfig:
+        if values is None:
+            return cls()
+        if not isinstance(values, Mapping):
+            raise ValueError("paint_support must be a mapping")
+        unknown = set(values) - {field.name for field in fields(cls)}
+        if unknown:
+            raise ValueError(f"unknown paint_support settings: {sorted(map(str, unknown))}")
+        return cls(**values)
 
 
 @dataclass(frozen=True)
@@ -283,6 +324,7 @@ def segment_frame(
     separation_px: float = 0.0,
     yoke_dilate_px: float = 0.0,
     color_wins_over_yoke: bool = False,
+    paint_support: Mapping[str, Any] | None = None,
 ) -> SegmentationMasks:
     """Build ball, hemisphere, and yoke masks for one BGR frame.
 
@@ -304,6 +346,12 @@ def segment_frame(
     ``yoke_dilate_px`` widens the yoke exclusion after thresholding, and
     ``color_wins_over_yoke`` keeps pixels that matched a speckle colour even
     when they also fall inside the yoke range.
+
+    Optional ``paint_support`` removes low-confidence color seeds before
+    growth and caps growth at ``max_distance_px``. The supported regions move
+    with the observed paint, excluding isolated gray interior/rim pixels even
+    when a permissive shell HSV range accepts them. It assumes the outer
+    surface carries sufficiently saturated, visible paint.
     """
 
     frame = np.asarray(frame_bgr)
@@ -315,6 +363,9 @@ def segment_frame(
     mode = str(mode).strip().lower()
     if mode not in {"color", "equator"}:
         raise ValueError("segment mode must be 'color' or 'equator'")
+    support = PaintSupportConfig.from_mapping(paint_support)
+    if support.enabled and mode != "color":
+        raise ValueError("paint_support requires color segmentation")
 
     u0, v0, _ = _parse_circle(circle)
     ball = make_ball_mask(frame, circle, margin_px=ball_margin_px)
@@ -339,13 +390,20 @@ def segment_frame(
             raise ValueError(
                 "color segmentation requires both top_hsv and bottom_hsv"
             )
+        top_seed = threshold_hsv(hsv, top_hsv, name="top_hsv")
+        bottom_seed = threshold_hsv(hsv, bottom_hsv, name="bottom_hsv")
+        if support.enabled:
+            confident = ((hsv[:, :, 1] >= support.min_saturation)
+                         & (hsv[:, :, 2] >= support.min_value))
+            top_seed &= confident
+            bottom_seed &= confident
         top = clean_mask(
-            threshold_hsv(hsv, top_hsv, name="top_hsv"),
+            top_seed,
             kernel_size=morph_kernel,
             iterations=morph_iterations,
         )
         bottom = clean_mask(
-            threshold_hsv(hsv, bottom_hsv, name="bottom_hsv"),
+            bottom_seed,
             kernel_size=morph_kernel,
             iterations=morph_iterations,
         )
@@ -362,9 +420,10 @@ def segment_frame(
             yoke &= ~(top | bottom)
         usable_ball = ball & ~yoke
 
-        if grow_px > 0:
-            grown_top = _dilate_mask(top, grow_px)
-            grown_bottom = _dilate_mask(bottom, grow_px)
+        growth = min(grow_px, support.max_distance_px) if support.enabled else grow_px
+        if growth > 0:
+            grown_top = _dilate_mask(top, growth)
+            grown_bottom = _dilate_mask(bottom, growth)
             # Grow only into surface that the *other* hemisphere's grown
             # region (plus separation_px) does not claim, so no feature can
             # be seeded on the far side of the seam.

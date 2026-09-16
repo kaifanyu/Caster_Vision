@@ -64,6 +64,13 @@ segment:
   separation_px: 9.0
   yoke_dilate_px: 5.0
   color_wins_over_yoke: true
+  # Restrict tracking to visible paint and its immediate neighborhood.
+  # Suppresses gray inner disc/rim seeds; follows the paint in each image.
+  paint_support:
+    enabled: true
+    min_saturation: 30
+    min_value: 40
+    max_distance_px: 17
   equator:
     angle_deg: 0.0
     offset_px: 0.0
@@ -102,7 +109,7 @@ offline:
   min_track_length: 3
   max_tracks_per_frame: 100
   robust_loss_scale_px: 1.0
-  # The 557-frame mechanical fit required 91 evaluations after track-selection repair.
+  # Evaluation budget per local pixel fit; convergence is still required.
   max_nfev: 200
   min_observations_per_frame: 12
   max_pose_change_deg: 5.0
@@ -111,6 +118,12 @@ offline:
   min_spatial_spread_fraction: 0.04
   limb_cull_deg: 65.0
   recover_invalid_frames: true
+  # Reconnect only through at least two agreeing, measured image links.
+  graph_recovery_enabled: true
+  graph_recovery_max_step_deg: 30.0
+  # A weak interval should not reject the entire clip's pixel fit.
+  window_frames: 60
+  window_overlap_frames: 20
   backward_window_frames: 12
   backward_stride: 3
   rate_window_s: 0.25
@@ -118,6 +131,8 @@ offline:
 mechanical:
   enabled: true
   gap_fraction: 0.1
+  window_frames: 60
+  overlap_frames: 20
 frame_calib:
   initial_roll_deg: 0.0
   R_bc:

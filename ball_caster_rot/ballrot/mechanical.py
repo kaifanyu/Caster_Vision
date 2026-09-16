@@ -31,6 +31,10 @@ class MechanicalConfig:
     # Separation of the complementary cap boundary planes / sphere diameter.
     # Zero is an ideal shared equator, not a measured nonzero hardware gap.
     gap_fraction: float = 0.0
+    # Zero retains the original full-trajectory fit. Positive values bound each
+    # joint fit; accepted overlapping image poses supply its global reference.
+    window_frames: int = 0
+    overlap_frames: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
@@ -40,6 +44,15 @@ class MechanicalConfig:
                 or not np.isfinite(self.gap_fraction)
                 or not 0 <= self.gap_fraction < 1):
             raise ValueError("mechanical.gap_fraction must be finite in [0, 1)")
+        for name in ("window_frames", "overlap_frames"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
+                raise ValueError(f"mechanical.{name} must be a non-negative integer")
+        if self.window_frames == 0:
+            if self.overlap_frames:
+                raise ValueError("mechanical.overlap_frames requires window_frames")
+        elif self.window_frames < 3 or not 1 <= self.overlap_frames < self.window_frames:
+            raise ValueError("mechanical windows require window_frames >= 3 and 1 <= overlap_frames < window_frames")
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any] | None) -> MechanicalConfig:
@@ -89,7 +102,7 @@ def _initial_angles(rotations, valid, F):
     return alpha, beta
 
 
-def refine_mechanical_trajectory(
+def _refine_mechanical_batch(
     observations: dict[str, list[SurfaceObservation]],
     initial_rotations: dict[str, np.ndarray],
     initial_valid: dict[str, np.ndarray],
@@ -100,6 +113,9 @@ def refine_mechanical_trajectory(
     config: MechanicalConfig | Mapping[str, Any] | None = None,
     offline_config: OfflineConfig | Mapping[str, Any] | None = None,
     top_shell_sign: int = 1,
+    *,
+    fixed_references: dict[str, dict[int, float]] | None = None,
+    initial_angles: tuple[np.ndarray, dict[str, np.ndarray]] | None = None,
 ) -> MechanicalResult:
     """Fit shared roll and independently observed shell spins to image tracks.
 
@@ -143,7 +159,22 @@ def refine_mechanical_trajectory(
             raise ValueError("observations must contain SurfaceObservation instances")
         if any(entry.frame_index >= n for entry in entries):
             raise ValueError("observation frame_index exceeds trajectory length")
-    alpha, beta = _initial_angles(poses, validity, frame) if n else (np.empty(0), {name: np.empty(0) for name in names})
+    if initial_angles is None:
+        alpha, beta = _initial_angles(poses, validity, frame) if n else (np.empty(0), {name: np.empty(0) for name in names})
+    else:
+        alpha = np.asarray(initial_angles[0], dtype=float).copy()
+        beta = {name: np.asarray(initial_angles[1][name], dtype=float).copy() for name in names}
+        if any(value.shape != (n,) or not np.all(np.isfinite(value)) for value in (alpha, *beta.values())):
+            raise ValueError("internal mechanical window angles must be finite arrays of length N")
+    if fixed_references is not None:
+        if set(fixed_references) != {"alpha", "top", "bottom"}:
+            raise ValueError("internal mechanical references require alpha, top and bottom")
+        for name, references in fixed_references.items():
+            target = alpha if name == "alpha" else beta[name]
+            for index, value in references.items():
+                if not 0 <= index < n or not np.isfinite(value):
+                    raise ValueError("internal mechanical reference is outside the window or non-finite")
+                target[index] = value
     projected = {name: _model_rotations(alpha, beta[name], frame) for name in names}
     output_valid = {name: np.zeros(n, dtype=bool) for name in names}
     frame_reports = {name: [{"frame_index": index, "status": "unresolved",
@@ -164,6 +195,9 @@ def refine_mechanical_trajectory(
             "No equality of shell spins, no-slip condition or temporal smoothness is imposed.",
         ],
     }
+    if fixed_references is not None:
+        report["limitations"][2] = "Each shell component requires a measured overlap reference in the original global frame."
+        report["fixed_reference_frames"] = {name: sorted(values) for name, values in fixed_references.items()}
 
     def finish(status):
         report["status"] = status
@@ -213,13 +247,15 @@ def refine_mechanical_trajectory(
             if not group:
                 continue
             frame_ids = sorted({entry.frame_index for entry in group})
-            trusted = [index for index in frame_ids if validity[name][index]]
+            trusted = [index for index in frame_ids if (
+                validity[name][index] if fixed_references is None else index in fixed_references[name])]
             if not trusted:
                 for index in frame_ids:
-                    frame_reports[name][index]["reason"] = "no_trusted_pose_anchor"
+                    frame_reports[name][index]["reason"] = (
+                        "no_trusted_pose_anchor" if fixed_references is None else "no_measured_overlap_reference")
                 continue
             details = {"shell": name, "anchor_frame": trusted[0], "frame_indices": frame_ids,
-                       "observation_count": len(group), "inherits_input_reference": True}
+                       "observation_count": len(group), "inherits_input_reference": fixed_references is None}
             report["components"].append(details)
             components.append((name, group, details))
             report["selected_observation_count"][name] += len(group)
@@ -246,15 +282,19 @@ def refine_mechanical_trajectory(
     for _, _, details in components:
         group = root(details["anchor_frame"])
         roll_anchors[group] = min(roll_anchors.get(group, details["anchor_frame"]), details["anchor_frame"])
-    alpha_anchors = set(roll_anchors.values()) | {0}
-    report["roll_anchor_frames"] = sorted(set(roll_anchors.values()))
+    alpha_anchors = (set(roll_anchors.values()) | {0} if fixed_references is None
+                     else set(fixed_references["alpha"]))
+    report["roll_anchor_frames"] = sorted(alpha_anchors if fixed_references is not None
+                                          else set(roll_anchors.values()))
     alpha_frames = sorted({entry.frame_index for _, group, _ in components for entry in group} - alpha_anchors)
     alpha_index = {index: variable for variable, index in enumerate(alpha_frames)}
     beta_index = {}
     variable_count = len(alpha_frames)
     for name, group, details in components:
+        fixed_beta = ({details["anchor_frame"], 0} if fixed_references is None
+                      else set(fixed_references[name]))
         for index in details["frame_indices"]:
-            if index != details["anchor_frame"] and index != 0:
+            if index not in fixed_beta:
                 beta_index[(name, index)] = variable_count
                 variable_count += 1
     pose_dimension = variable_count
@@ -382,12 +422,14 @@ def refine_mechanical_trajectory(
         local_inliers = [entry for entry, good in zip(group, inlier[selected]) if good]
         connected = _components(local_inliers, radius_px, opt)
         anchor = details["anchor_frame"]
+        reference_frames = ({anchor} if fixed_references is None
+                            else set(fixed_references[name]) & set(details["frame_indices"]))
         connected_frames = set()
         details["inlier_graph_components"] = []
         for connected_group in connected:
             group_frames = {entry.frame_index for entry in connected_group}
             details["inlier_graph_components"].append(sorted(group_frames))
-            if anchor in group_frames:
+            if reference_frames & group_frames:
                 connected_frames.update(group_frames)
         correction = np.rad2deg(Rotation.from_matrix(
             fitted_poses[name] @ base_projected[name].transpose(0, 2, 1)).magnitude())
@@ -418,10 +460,20 @@ def refine_mechanical_trajectory(
             output_valid[name][index] = reason is None
         # An anchor failing pixel quality cannot establish this component's
         # absolute reference, even when downstream frames fit their own points.
-        if not output_valid[name][anchor]:
+        accepted_references = {index for index in reference_frames if output_valid[name][index]}
+        if not accepted_references:
             for index in details["frame_indices"]:
                 output_valid[name][index] = False
                 frame_reports[name][index].update(status="unresolved", reason="anchor_quality_failed")
+        elif fixed_references is not None:
+            anchored = set()
+            for group_frames in details["inlier_graph_components"]:
+                if accepted_references.intersection(group_frames):
+                    anchored.update(group_frames)
+            for index in details["frame_indices"]:
+                if output_valid[name][index] and index not in anchored:
+                    output_valid[name][index] = False
+                    frame_reports[name][index].update(status="unresolved", reason="disconnected_inlier_graph")
         details["accepted_frames"] = [index for index in details["frame_indices"] if output_valid[name][index]]
         details["accepted"] = bool(details["accepted_frames"])
     # Use one common numeric roll even at unsupported times, but never expose
@@ -431,6 +483,22 @@ def refine_mechanical_trajectory(
     beta = fitted_beta
     projected = fitted_poses
     return finish("completed")
+
+
+def refine_mechanical_trajectory(
+    observations, initial_rotations, initial_valid, K, C, F, radius=1.0,
+    config=None, offline_config=None, top_shell_sign=1,
+) -> MechanicalResult:
+    """Fit the mechanical trajectory, optionally in measured overlapping windows."""
+    cfg = config if isinstance(config, MechanicalConfig) else MechanicalConfig.from_mapping(config)
+    if cfg.enabled and cfg.window_frames:
+        from .mechanical_windows import refine_mechanical_windows
+        return refine_mechanical_windows(
+            observations, initial_rotations, initial_valid, K, C, F, radius=radius,
+            config=cfg, offline_config=offline_config, top_shell_sign=top_shell_sign)
+    return _refine_mechanical_batch(
+        observations, initial_rotations, initial_valid, K, C, F, radius=radius,
+        config=cfg, offline_config=offline_config, top_shell_sign=top_shell_sign)
 
 
 __all__ = ["MechanicalConfig", "MechanicalResult", "refine_mechanical_trajectory"]

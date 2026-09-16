@@ -1,12 +1,109 @@
 # New-video inspection and calibration workflow
 
+## Rerun with paint support and interval recovery
+
+The current `config.yaml` enables these changes. Keep the existing three MKV
+recordings and calibrated starting frame. Retrack **the main clip** to collect
+observations with the new mask; refitting the old observation archive cannot
+remove tracks that came from an exposed inner surface.
+
+From `ball_caster_rot` in PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run.py --config .\config.yaml --output-dir .\out\real_recovered --strict
+.\.venv\Scripts\python.exe .\scripts\simulate_measured.py --config .\config.yaml --results .\out\real_recovered\results.json --output .\out\real_recovered\simulation --tests axes replay --stride 1 --render-width 640
+```
+
+`--output-dir` is relative to the working directory. These commands preserve
+`out/real`. The first writes `tracking_overlay.mp4`, measurements and diagnostic
+reports; the second writes `simulation/axes_overlay.mp4` and
+`simulation/replay.mp4`. Run them separately: `--strict` may return exit code 2
+after writing results if measurements remain unresolved. The simulation can
+still show that diagnostic result; missing poses are not valid measurements.
+
+The new settings are:
+
+```yaml
+segment:
+  paint_support:
+    enabled: true
+    min_saturation: 30
+    min_value: 40
+    max_distance_px: 17
+offline:
+  graph_recovery_enabled: true
+  graph_recovery_max_step_deg: 30.0
+  window_frames: 60
+  window_overlap_frames: 20
+mechanical:
+  window_frames: 60
+  overlap_frames: 20
+```
+
+- **Paint support:** each image supplies high-confidence colored seeds before
+  mask growth or yoke arbitration. Tracking stays within 17 pixels of that
+  support, excluding isolated gray inner-disc/rim pixels accepted by the old
+  broad green HSV range. This follows visible paint without assuming the
+  starting roll. It is not a full semantic rim/yoke detector: paint reflections
+  or unpainted boundaries immediately beside a mark can still contaminate a
+  tracking window. `inspect_hsv.py` previews the same processed masks.
+- **Image-supported recovery:** nearby forward and backward track observations
+  must connect a lost frame to at least two already anchored frames, agree on
+  rotation, and pass pixel residual, spread and visibility checks. Recovery
+  can extend through successive overlaps. A blank image or disconnected set
+  of later tracks remains unresolved. The held display pose is never an anchor.
+- **Local offline fits:** independent and mechanical fits use overlapping
+  60-frame windows and smaller retries when needed. Accepted overlap poses
+  stay fixed in the original camera reference. The independent fit can prune
+  explicitly failed image observations and refit its neighbors. Mechanical
+  fitting joins only through accepted overlap, retaining shared roll and each
+  shell's own observed swivel reference. It cannot replace a missing swivel
+  measurement with the other shell's roll.
+
+Inspect `results.json.offline.shells.<shell>.graph_recovery`, offline `windows`,
+and `mechanical_report.json` (`windows`, `gaps`, `summary`). Forward tracking,
+recovered initialization and final mechanical validity are separate stages.
+More accepted frames do not establish angular accuracy without ground truth.
+
+These changes do not require rerunning pure-roll/pure-swivel axis calibration
+just to try the main clip. Revisit it if the camera/mechanism reference changes
+or its diagnostic evidence is poor. Initial orientation and the physical
+common-center sphere/cap assumption are unchanged; verify those separately.
+
+### Checks on the existing recordings
+
+The implementation passed the full 341-test suite; subsequent mechanical
+iterator/retry fixes passed 34 focused tests. In a controlled saved-observation
+check of the first 120 frames, windowed mechanical fitting accepted **56 top /
+51 bottom** poses, compared with **44 / 38** in the previous single fit. Pixel
+quality limits stayed unchanged. It stopped after the last supported interval;
+this is additional usable coverage, not a demonstrated angular-accuracy gain.
+
+Sequentially decoded mask samples retain hundreds of exterior corners while
+removing the known inner-disc false corners in frames 0 and 3. Exact frames 133
+and 438 also show motion blur: better masks alone do not make those steps
+trustworthy. The new graph checks correctly reject their old saved observations
+at the existing 2-pixel reprojection limit. Do not relax that limit solely to
+make an overlay continue through a gap.
+
+The final support distance is **17 pixels**. An 8-pixel trial removed useful
+texture and caused an earlier loss at frame 62. The 17-pixel setting still
+eliminates the known gray-disc false corners, while an 85-frame forward check
+retained 83 top and 79 bottom poses and recovered after the brief blurred
+interval. This is a tracking check, not a final mechanical accuracy result.
+The saved `out/rim_recovery_validation/run160` trial used the superseded
+8-pixel setting; use the commands above to generate results with the final
+configuration.
+
+## Previous full-run failure
+
 For the latest 557-frame run with no moving axes, see
 [the failure review](LATEST_RUN_FAILURE_REVIEW.md). Its mechanical solver did
 not converge, and the forward tracker also lost its reference during the clip;
 the masks were not empty. A 200-evaluation refit alone did not fix the failure.
 After repairing observation selection, the 200-evaluation fit converged in 91
 evaluations, but only 40 top and 36 bottom poses passed out of 557. The current
-config uses that budget; substantial unresolved motion remains.
+config retains that budget per fit and now uses the local processing above.
 
 ## Shared roll, independent swivel, and a configurable fixed gap
 

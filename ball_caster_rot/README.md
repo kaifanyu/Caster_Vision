@@ -11,6 +11,12 @@ It uses classical computer vision: HSV/equator segmentation, forward-backward
 KLT tracking, ray-sphere unprojection, and RANSAC/Kabsch rotation fitting. No
 GPU or deep-learning model is required.
 
+For the current footage, [rerun with paint-supported masks and overlapping
+offline fits](documents/NEW_VIDEO_WORKFLOW.md#rerun-with-paint-support-and-interval-recovery).
+This retracks the main clip into a separate output directory, then generates
+the tracking, axis and replay overlays. Recovery requires actual image overlap;
+unsupported intervals remain marked missing.
+
 The code and Python environment are prepared. Real footage and real camera/
 axis calibration values are deliberately left for you in `data/` and
 `config.yaml`.

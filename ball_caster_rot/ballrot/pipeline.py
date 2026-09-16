@@ -136,6 +136,7 @@ def _segment(
         separation_px=float(config.get("separation_px", 0.0)),
         yoke_dilate_px=float(config.get("yoke_dilate_px", 0.0)),
         color_wins_over_yoke=bool(config.get("color_wins_over_yoke", False)),
+        paint_support=config.get("paint_support"),
     )
 
 

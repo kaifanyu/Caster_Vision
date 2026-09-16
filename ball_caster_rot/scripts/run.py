@@ -40,6 +40,8 @@ def parser() -> argparse.ArgumentParser:
         help="Return exit code 2 when self-consistency targets are missed",
     )
     result.add_argument("--no-overlay", action="store_true")
+    result.add_argument("--output-dir", type=Path, default=None,
+                        help="Write this run to a separate directory (relative to the current directory)")
     return result
 
 
@@ -89,11 +91,16 @@ def _print_startup(
     print(f"intrinsics source:  {'FOV approximation (UNTRUSTED)' if approximate_K else 'calibrated config K'}")
     print(f"circle source:      {'auto-fit first frame' if circle is None else 'configured fixed circle'}")
     print(f"segmentation:       {segment.get('mode', 'color')}")
+    print(f"paint support:      {'enabled' if segment.get('paint_support', {}).get('enabled', False) else 'disabled'}")
     print("axis frame source:  calibrated R_bc with initial roll offset")
     print(f"initial roll:       {config.get('frame_calib', {}).get('initial_roll_deg', 0.0):g} deg")
     print(f"temporal tracking:  {'persistent tracks + nearby keyframes' if config.get('temporal', {}).get('enabled', False) else 'disabled (frame pairs)'}")
     print(f"offline refinement: {'spherical pixel fit + backward observations' if config.get('offline', {}).get('enabled', False) else 'disabled'}")
     print(f"mechanical fit:     {'shared roll + independent swivel' if config.get('mechanical', {}).get('enabled', False) else 'disabled'}")
+    if config.get("offline", {}).get("enabled", False) and config.get("offline", {}).get("window_frames", 0):
+        print(f"offline windows:    {config['offline']['window_frames']} frames with {config['offline'].get('window_overlap_frames', 12)} overlapping frames")
+    if config.get("mechanical", {}).get("enabled", False) and config.get("mechanical", {}).get("window_frames", 0):
+        print(f"mechanical windows: {config['mechanical']['window_frames']} frames with {config['mechanical'].get('overlap_frames', 0)} overlapping frames")
     print()
 
 
@@ -191,6 +198,8 @@ def _print_mechanical_status(report: dict | None) -> None:
     if report is None:
         return
     print(f"MECHANICAL FIT: {report.get('status', 'unknown')}")
+    if "windows" in report:
+        print(f"  Window attempts: {len(report['windows'])}; see mechanical_report.json for overlap and gap diagnostics")
     if report.get("solver_message"):
         print(f"  Solver: {report['solver_message']} (evaluations: {report.get('solver_nfev', 'unknown')})")
     for name in ("top", "bottom"):
@@ -243,7 +252,8 @@ def main() -> int:
     _print_startup(source, fps, approximate, circle, config)
 
     output_cfg = config.get("output", {})
-    output_dir = resolve_from_config(config_path, output_cfg.get("dir", "out/real"))
+    output_dir = (args.output_dir.resolve() if args.output_dir is not None else
+                  resolve_from_config(config_path, output_cfg.get("dir", "out/real")))
     save_overlay = bool(output_cfg.get("save_overlay_video", True)) and not args.no_overlay
     overlay_path = output_dir / "tracking_overlay.mp4" if save_overlay else None
     # Preserve native video timestamps unless the user explicitly retimes it.
@@ -306,6 +316,9 @@ def main() -> int:
             "timing_source": "fps_override" if fps_override is not None else getattr(source, "timing_source", "frame_records"),
             "overlay_timing": "constant-rate diagnostic playback; use time_s for measurement",
             "tracking_overlay_stage": "forward tracking before optional offline refinement",
+            "segmentation": config.get("segment", {}),
+            "feature_tracking": config.get("track", {}),
+            "increment_estimation": config.get("estimate", {}),
             **({"mechanical_model": {**result.mechanical["config"],
                                       "model": result.mechanical["model"]}}
                if result.mechanical is not None else {}),
