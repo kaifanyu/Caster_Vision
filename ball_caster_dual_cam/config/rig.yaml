@@ -1,0 +1,87 @@
+# All file paths are relative to THIS config file, not the working directory.
+schema_version: 1
+cameras:
+  c920:
+    device: /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_05577B1F-video-index0
+    intrinsics: ../calibration/c920.yaml
+    capture:
+      width: 1920
+      height: 1080
+      fps: 30
+      fourcc: MJPG
+      exposure_us: 7700       # Verified C920 streaming value; 7.7 ms under current lighting
+      gain: 180
+      white_balance_kelvin: 4000
+      power_line_frequency: 2 # V4L2: 2=60 Hz, 1=50 Hz
+      focus: 50              # Existing manual lens position; autofocus disabled by recorder
+      zoom: 100
+      brightness: 128
+      contrast: 128
+      saturation: 128
+      sharpness: 128
+      backlight_compensation: 0
+    circle: [992, 550, 460]   # Reviewed in undistorted pixels for this fixed camera mount
+    segment:
+      red_hsv: {lo: [170, 130, 60], hi: [12, 255, 255]}
+      green_hsv: {lo: [40, 70, 30], hi: [100, 255, 255]}
+      grow_px: 5
+      separation_px: 5
+      morphology_px: 3
+      boundary_margin_px: 1
+  brio101:
+    device: /dev/v4l/by-id/usb-046d_Brio_101_2516APNGPSE8-video-index0
+    intrinsics: ../calibration/brio101.yaml
+    capture:
+      width: 1920
+      height: 1080
+      fps: 30
+      fourcc: MJPG
+      exposure_us: 8000       # Verified Brio value; 8 ms under current lighting
+      gain: 180
+      white_balance_kelvin: 4000
+      power_line_frequency: 2
+      brightness: 128
+      contrast: 128
+      saturation: 128
+      sharpness: 128
+      backlight_compensation: 0
+      # Brio 101 is FIXED FOCUS. No focus control belongs here.
+    circle: [850, 550, 520]   # Reviewed in undistorted pixels for this fixed camera mount
+    segment:
+      red_hsv: {lo: [170, 110, 50], hi: [12, 255, 255]}
+      green_hsv: {lo: [40, 120, 30], hi: [100, 255, 255]}
+      grow_px: 5
+      separation_px: 5
+      morphology_px: 3
+      boundary_margin_px: 1
+stereo:
+  path: ../calibration/stereo.yaml
+axes:
+  path: ../calibration/axes.yaml
+geometry:
+  radius_m: 0.100             # curvature radius of ONE shell; verify hardware
+  gap_m: 0.020                # distance between hemisphere rim planes
+  red_shell_sign: 1           # red local hemisphere is +z; green is -z
+  pivot_c920_m: null          # optional measured initial seed; fit during calibration
+  R_bc_seed: null             # optional home ball-to-C920 rotation seed
+timing:
+  brio_offset_s: 0.0          # aligned Brio time = recorded time + this offset
+  max_pair_skew_ms: 12.0
+  verified: false            # set only after measuring timing with a shared event
+tracking:
+  max_corners: 80             # per shell and camera; bounded offline calibration
+  quality: 0.005
+  min_distance_px: 7
+  klt_win: 21
+  pyramid_levels: 3
+  fwd_bwd_err_px: 0.8
+  min_track_length: 3
+  min_axis_step_deg: 0.20
+solver:
+  min_points_per_frame: 8
+  robust_px: 1.0
+  outlier_px: 3.0
+  max_inlier_rmse_px: 2.0
+  min_inlier_fraction: 0.7
+  min_calibration_excursion_deg: 15.0
+  max_nfev: 250
