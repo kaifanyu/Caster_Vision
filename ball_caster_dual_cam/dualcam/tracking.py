@@ -67,11 +67,17 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
         tracker = PersistentKLTTracker(KLTConfig.from_mapping(cfg.get("tracking", {})))
         collected = {}
         previous = previous_masks = None
+        paired_indices = {int(source): i for i, source in enumerate(session["pairs"][:, camera_id])}
+        previous_paired_points = None
         try:
-            for frame_index, pair in enumerate(session["pairs"]):
-                raw = video.read(int(pair[camera_id]))
+            # Keep identities through unpaired source frames. Jumping directly
+            # between selected pairs can destroy home tracks across a timing gap.
+            for source_index in range(int(session["pairs"][0, camera_id]),
+                                      int(session["pairs"][-1, camera_id]) + 1):
+                frame_index = paired_indices.get(source_index)
+                raw = video.read(source_index)
                 frame = cv2.remap(raw, mapx, mapy, cv2.INTER_LINEAR)
-                if frame_index == 0:
+                if previous is None:
                     circle = choose_circle(frame, cfg["cameras"][name])
                     circles.append(circle)
                     C, _ = sphere_pose_from_circle(*circle, info["K"])
@@ -88,18 +94,36 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
                             for identifier, uv0, uv1, error in zip(match.track_ids, match.uv_prev,
                                                                  match.uv_curr, match.fb_error):
                                 weight = 1/np.sqrt(1+float(error)**2)
-                                for fi, uv in ((frame_index-1, uv0), (frame_index, uv1)):
-                                    key = (shell, fi, int(identifier))
-                                    collected[key] = (camera_id, shell, fi, int(identifier), uv, weight)
-                            estimate = solve_hemisphere_increment(
-                                match.uv_prev, match.uv_curr, info["K"], C,
-                                ransac_iters=120, min_inliers=8, rng=7+frame_index,
-                            )
-                            if estimate.success:
-                                increments[camera_id, shell, frame_index-1] = estimate.R
-                                support[camera_id, shell, frame_index-1] = estimate.inlier_count
+                                for fi, uv in ((paired_indices.get(source_index-1), uv0),
+                                               (frame_index, uv1)):
+                                    if fi is not None:
+                                        key = (shell, fi, int(identifier))
+                                        collected[key] = (camera_id, shell, fi, int(identifier), uv, weight)
+                if frame_index is not None:
+                    points = []
+                    for shell, old_name in enumerate(("top", "bottom")):
+                        uv, identifiers = tracker.points(old_name)
+                        current = {int(identifier): point for identifier, point in zip(identifiers, uv)}
+                        points.append(current)
+                        if previous_paired_points is not None:
+                            prior = previous_paired_points[shell]
+                            common = sorted(prior.keys() & current.keys())
+                            if len(common) >= 8:
+                                # Endpoint correspondences retain IDs only if
+                                # every intermediate KLT step survived. This is
+                                # the rotation BETWEEN paired frames, not just
+                                # the last native-frame increment.
+                                estimate = solve_hemisphere_increment(
+                                    np.asarray([prior[k] for k in common]),
+                                    np.asarray([current[k] for k in common]), info["K"], C,
+                                    ransac_iters=120, min_inliers=8, rng=7+frame_index,
+                                )
+                                if estimate.success:
+                                    increments[camera_id, shell, frame_index-1] = estimate.R
+                                    support[camera_id, shell, frame_index-1] = estimate.inlier_count
+                    previous_paired_points = points
                 previous, previous_masks = frame, masks
-                if progress and (frame_index+1) % 30 == 0:
+                if progress and frame_index is not None and (frame_index+1) % 30 == 0:
                     progress(f"{name}: tracked {frame_index+1}/{n} paired frames", flush=True)
         finally:
             video.close()
@@ -112,7 +136,10 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
     return {"observations": observations, "times": session["times"],
             "increments": increments, "increment_support": support,
             "circles": np.asarray(circles), "pairs": session["pairs"], "session": str(session["path"]),
-            "session_report": session["report"], "session_mode": session["metadata"].get("mode"),
+            "session_report": {**session["report"],
+                               "tracking_image_policy": "Track every native image between first and last selected pair; fit only paired observations.",
+                               "tracked_source_frames": (session["pairs"][-1]-session["pairs"][0]+1).tolist()},
+            "session_mode": session["metadata"].get("mode"),
             "intrinsics": intrinsics}
 
 

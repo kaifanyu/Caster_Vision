@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation
 import yaml
+from ballrot.track import PersistentKLTTracker
 
 from dualcam.config import load_config, load_rig
 from dualcam.model import project, rotation_z, world_points
@@ -136,6 +138,38 @@ def render_calibration_sessions(root):
 
 
 class ImageAxisCalibrationTests(unittest.TestCase):
+    def test_unpaired_images_preserve_tracks_and_paired_rotation_interval(self):
+        cv2.setNumThreads(1)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cfg, truth_F, _, motions = render_calibration_sessions(root)
+            # Simulate a host-time pairing hole while both videos retain all
+            # images. The first motion increment spans nine native intervals.
+            with (root/"roll/brio101_timestamps.csv").open("w", newline="") as stream:
+                table = csv.writer(stream)
+                table.writerow(["frame_index", "timestamp_s"])
+                table.writerows((i, i/30 + (.015 if 1 <= i <= 8 else 0)) for i in range(14))
+            calls = []
+            original = PersistentKLTTracker.track_pair
+            def count_pairs(tracker, *args, **kwargs):
+                calls.append(1)
+                return original(tracker, *args, **kwargs)
+            with patch.object(PersistentKLTTracker, "track_pair", count_pairs):
+                tracked = track_session(root/"roll", cfg, progress=None)
+            selected = np.array([0, 9, 10, 11, 12, 13])
+            np.testing.assert_array_equal(tracked["pairs"], np.column_stack([selected, selected]))
+            self.assertEqual(len(calls), 2 * 13)
+            obs = tracked["observations"]
+            self.assertEqual(set(obs["frame"]), set(range(len(selected))))
+            for ci in (0, 1):
+                branch = obs["camera"] == ci
+                home_ids = set(obs["track"][branch & (obs["frame"] == 0)])
+                next_ids = set(obs["track"][branch & (obs["frame"] == 1)])
+                self.assertGreaterEqual(len(home_ids & next_ids), 8)
+            cameras, _, _ = load_rig(cfg)
+            initial = initialize_angles(tracked, cameras, truth_F, "roll")
+            np.testing.assert_allclose(initial[:, 0], motions["roll"][selected, 0], atol=.05)
+
     def test_axis_bootstrap_and_refinement_from_two_rendered_pure_motion_clips(self):
         cv2.setNumThreads(1)
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,4 +1,36 @@
-# Written by scripts/calibrate_stereo.py. Translation is in METERS.
+calibration_kind: kalibr_stereo
 convention: X_brio101=R_21@X_c920+t_21_m
-R_21: null
-t_21_m: null
+R_21:
+- - -0.7827277593830596
+  - -0.1313376534082946
+  - -0.6083483175684603
+- - 0.13052346840965365
+  - -0.9903831406075823
+  - 0.045878742295037765
+- - -0.6085235236911453
+  - -0.043493167250305186
+  - 0.7923430226341668
+t_21_m:
+- 0.2077217804821981
+- -0.01264486457885215
+- 0.14582213774282674
+baseline_m: 0.2541108548307214
+intrinsics_sha256:
+  c920: 8e1993b2b7c6ddd79521b732932c8922014d789b37496ad61fae9512b32c48a4
+  brio101: 614dc68aa8c127b1e39ba5aabcceccc0802dc7c1fce25fca5663db6713c1ec84
+source:
+  tool: Kalibr
+  camchain_file: kalibr_camchain.yaml
+  source_file: /home/hamr/hamster_ws/stereo-camchain.yaml
+  source_sha256: 53cff4a590cd2972073abcd0d48f0636b26b2e0cdfec924f7b5ff93bf5636e67
+  calibration_id: stereo_checkerboard_rot180_20260917
+  image_coordinates: original_unrotated
+  imported_utc: '2026-09-17T20:27:33.893040+00:00'
+  transform: cam1.T_cn_cnm1 (raw C920 to Brio); used directly, not inverted
+  camera_mapping:
+    cam0: c920
+    cam1: brio101
+  quality_report_supplied: false
+  coordinate_conversion_note: User-supplied exact conversion from stereo_checkerboard_rot180_20260917
+    to original image coordinates. Do not rotate input images.
+created_utc: '2026-09-17T20:27:33.893040+00:00'

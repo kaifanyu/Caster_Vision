@@ -15,6 +15,8 @@ import yaml
 
 from dualcam.capture import (CameraError, V4L2Camera, check_intrinsics_profile,
                              configure_open_capture, parse_controls, record_session, validate_frame)
+from dualcam.mjpeg_avi import SegmentedMJPEGAVIWriter
+from dualcam.session import SelectedVideo
 
 
 CONTROLS = """
@@ -145,6 +147,110 @@ class FakeWriter:
 
 
 class CaptureTests(unittest.TestCase):
+    def test_invalid_duration_and_segment_limit_fail_before_touching_devices(self):
+        config = {"cameras": {name: camera_config(name) for name in ("c920", "brio101")}}
+        with patch("dualcam.capture.V4L2Camera") as camera:
+            for duration in (0, -1, float("inf"), float("nan"), True, "10"):
+                with self.subTest(duration=duration), self.assertRaises(CameraError):
+                    record_session(config, "unused.yaml", "unused-session", duration, "motion")
+            for limit in (0, -1, 1.5, True):
+                with self.subTest(limit=limit), self.assertRaises(CameraError):
+                    record_session(config, "unused.yaml", "unused-session", None, "motion",
+                                   max_video_file_bytes=limit)
+            camera.assert_not_called()
+
+    def test_continuous_stop_rotates_files_and_finalizes_one_global_timestamp_stream(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = {"cameras": {name: camera_config(name) for name in ("c920", "brio101")}}
+            config_path = root/"rig.yaml"
+            config_path.write_text(yaml.safe_dump(config))
+            runners = {name: FakeV4L2() for name in config["cameras"]}
+            cameras = {name: V4L2Camera(name, cfg, runners[name]) for name, cfg in config["cameras"].items()}
+            captures = [FakeCapture(), FakeCapture()]
+            stop, writers = threading.Event(), []
+            limit = 256+3*(len(captures[0].jpeg.reshape(-1))+24)
+
+            def make_writer(*args, **kwargs):
+                writer = SegmentedMJPEGAVIWriter(*args, **kwargs)
+                original_write = writer.write
+                def write_and_stop(frame):
+                    original_write(frame)
+                    if len(writers) == 2 and all(item.frames >= 9 for item in writers):
+                        stop.set()
+                writer.write = write_and_stop
+                writers.append(writer)
+                return writer
+
+            with patch("dualcam.capture.V4L2Camera", side_effect=lambda name, cfg: cameras[name]), \
+                 patch("dualcam.capture.cv2.VideoCapture", side_effect=captures), \
+                 patch("dualcam.capture.SegmentedMJPEGAVIWriter", side_effect=make_writer):
+                session = record_session(config, config_path, root/"session", None, "motion", stop,
+                                         max_video_file_bytes=limit)
+            self.assertEqual(session["status"], "complete")
+            self.assertTrue(session["continuous"])
+            self.assertIsNone(session["requested_duration_s"])
+            self.assertFalse(session["errors"])
+            self.assertTrue(all(cap.released for cap in captures))
+            self.assertTrue(all(not writer.isOpened() for writer in writers))
+            anchor = session["clock_anchor"]
+            self.assertLessEqual(anchor["host_monotonic_before_s"], session["host_monotonic_zero_s"])
+            self.assertGreaterEqual(anchor["host_monotonic_after_s"], session["host_monotonic_zero_s"])
+            self.assertEqual(session["started_unix_s"], anchor["unix_s"])
+            saved = json.loads((root/"session/session.json").read_text())
+            self.assertEqual(saved["status"], "complete")
+            for name, source in zip(cameras, captures):
+                rows = list(csv.DictReader((root/f"session/{name}_timestamps.csv").open()))
+                segments = saved["cameras"][name]["video_segments"]
+                self.assertGreaterEqual(len(segments), 3)
+                self.assertEqual([int(row["frame_index"]) for row in rows], list(range(len(rows))))
+                self.assertEqual(sum(part["frame_count"] for part in segments), len(rows))
+                self.assertEqual(saved["stats"][name]["frames"], len(rows))
+                for part in segments:
+                    self.assertLessEqual((root/"session"/part["path"]).stat().st_size, limit)
+                video = SelectedVideo(root/f"session/{name}.avi", [1920, 1080])
+                try:
+                    for index in range(len(rows)):
+                        self.assertEqual(video.read(index).shape, source.frame.shape)
+                finally:
+                    video.close()
+
+    def test_continuous_camera_failure_finalizes_prior_segments_and_failed_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = {"cameras": {name: camera_config(name) for name in ("c920", "brio101")}}
+            config_path = root/"rig.yaml"
+            config_path.write_text(yaml.safe_dump(config))
+            cameras = {name: V4L2Camera(name, cfg, FakeV4L2()) for name, cfg in config["cameras"].items()}
+            captures = [FakeCapture(), FakeCapture()]
+            original_read, reads = captures[0].read, []
+            def eventually_fail():
+                result = original_read()
+                reads.append(True)
+                return (False, None) if len(reads) > 13 else result
+            captures[0].read = eventually_fail
+            limit = 256+2*(len(captures[0].jpeg.reshape(-1))+24)
+            with patch("dualcam.capture.V4L2Camera", side_effect=lambda name, cfg: cameras[name]), \
+                 patch("dualcam.capture.cv2.VideoCapture", side_effect=captures):
+                with self.assertRaisesRegex(CameraError, "camera read failed"):
+                    record_session(config, config_path, root/"session", None, "motion",
+                                   max_video_file_bytes=limit)
+            saved = json.loads((root/"session/session.json").read_text())
+            self.assertEqual(saved["status"], "failed")
+            self.assertTrue(all(cap.released for cap in captures))
+            self.assertGreater(len(saved["cameras"]["c920"]["video_segments"]), 1)
+            for name in cameras:
+                rows = list(csv.DictReader((root/f"session/{name}_timestamps.csv").open()))
+                parts = saved["cameras"][name]["video_segments"]
+                self.assertEqual(sum(part["frame_count"] for part in parts), len(rows))
+                for part in parts:
+                    video = cv2.VideoCapture(str(root/"session"/part["path"]))
+                    try:
+                        self.assertTrue(video.isOpened())
+                        self.assertEqual(round(video.get(cv2.CAP_PROP_FRAME_COUNT)), part["frame_count"])
+                    finally:
+                        video.release()
+
     def test_raw_capture_requires_jpeg_bytes_and_checks_header_dimensions(self):
         runner = FakeV4L2()
         camera = V4L2Camera("c920", camera_config("c920"), runner)

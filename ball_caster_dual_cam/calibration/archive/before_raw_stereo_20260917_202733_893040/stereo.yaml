@@ -1,0 +1,31 @@
+calibration_kind: kalibr_stereo
+convention: X_brio101=R_21@X_c920+t_21_m
+R_21:
+- - -0.7931916005025262
+  - -0.12781545557356427
+  - -0.5954076705995343
+- - 0.13379477370449672
+  - -0.9904128152903954
+  - 0.0343717011204914
+- - -0.5940926219215349
+  - -0.05239908992602914
+  - 0.8026881660728037
+t_21_m:
+- 0.2076788239790626
+- -0.012189647148925219
+- 0.1466202330425737
+baseline_m: 0.2545124243812085
+intrinsics_sha256:
+  c920: d2dc63f03712b7884381b225b9eefca6dd716d8716448041533e3a0587498d19
+  brio101: 20b253776ec27f5686b0492822e63b1b69d3b1956bdbe21afb246f90d0738a1d
+source:
+  tool: Kalibr
+  camchain_file: kalibr_camchain.yaml
+  transform: cam1.T_cn_cnm1 (cam0 to cam1); used directly, not inverted
+  camera_mapping:
+    cam0: c920
+    cam1: brio101
+  quality_report_supplied: false
+  mount_consistency: User confirmed camera mounts stayed fixed between Kalibr photos
+    and roll/swivel videos.
+created_utc: '2026-09-17T04:15:30.668127+00:00'

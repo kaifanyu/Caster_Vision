@@ -1,25 +1,33 @@
-# Camera 1 (C920): K/dist copied from ball_caster_rot/config.yaml.
-# Image size follows the dual-camera 1920x1080 capture mode.
-# capture_profile remains unverified because original capture settings were not supplied.
 calibration_kind: intrinsics
 image_size:
 - 1920
 - 1080
 K:
-- - 1407.09
+- - 1433.8830731381593
   - 0.0
-  - 945.81
+  - 947.7289396553851
 - - 0.0
-  - 1407.12
-  - 562.09
+  - 1436.0591195513541
+  - 554.8037320456973
 - - 0.0
   - 0.0
   - 1.0
 dist:
-- 0.03408
-- -0.0757
-- -0.00061
-- 0.000899
+- 0.04824211605148169
+- -0.17446720249037673
+- -0.002094080874366225
+- 0.0015257212046973843
 capture_profile: null
 camera_model: pinhole
 distortion_model: radtan
+source:
+  tool: Kalibr
+  camchain_file: kalibr_camchain.yaml
+  source_file: /home/hamr/hamster_ws/stereo-camchain.yaml
+  source_sha256: 53cff4a590cd2972073abcd0d48f0636b26b2e0cdfec924f7b5ff93bf5636e67
+  calibration_id: stereo_checkerboard_rot180_20260917
+  image_coordinates: original_unrotated
+  imported_utc: '2026-09-17T20:27:33.893040+00:00'
+  camera: cam0
+  rostopic: /cam0/image_raw
+  capture_profile_note: The supplied camchain does not record capture settings.

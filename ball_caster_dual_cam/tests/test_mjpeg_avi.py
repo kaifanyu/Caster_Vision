@@ -7,7 +7,8 @@ import unittest
 import cv2
 import numpy as np
 
-from dualcam.mjpeg_avi import MJPEGAVIWriter, jpeg_dimensions, jpeg_payload
+from dualcam.mjpeg_avi import (AVISizeLimitError, MJPEGAVIWriter, SegmentedMJPEGAVIWriter,
+                              jpeg_dimensions, jpeg_payload)
 
 
 def encoded_frames():
@@ -25,6 +26,46 @@ def encoded_frames():
 
 
 class MJPEGAviTests(unittest.TestCase):
+    def test_segment_rotation_preserves_every_original_frame_with_bounded_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)/"c920.avi"
+            frames = encoded_frames()*3
+            limit = 256+3*(max(map(len, frames))+24)
+            writer = SegmentedMJPEGAVIWriter(path, 30, (96, 64), max_file_size=limit)
+            for frame in frames:
+                writer.write(frame)
+            writer.release()
+            writer.release()
+            self.assertFalse(writer.isOpened())
+            self.assertEqual(writer.frames, len(frames))
+            self.assertGreater(len(writer.segments), 2)
+            consumed = 0
+            for index, segment in enumerate(writer.segments):
+                self.assertEqual(segment["path"], "c920.avi" if index == 0 else f"c920_{index:04d}.avi")
+                self.assertEqual(segment["start_frame"], consumed)
+                content = (path.parent/segment["path"]).read_bytes()
+                self.assertLessEqual(len(content), limit)
+                cursor = content.index(b"movi")+4
+                for frame in frames[consumed:consumed+segment["frame_count"]]:
+                    self.assertEqual(content[cursor:cursor+4], b"00dc")
+                    size = struct.unpack_from("<I", content, cursor+4)[0]
+                    self.assertEqual(content[cursor+8:cursor+8+size], frame.tobytes())
+                    cursor += 8+size+(size & 1)
+                self.assertEqual(content[cursor:cursor+4], b"idx1")
+                consumed += segment["frame_count"]
+            self.assertEqual(consumed, len(frames))
+
+    def test_segment_limit_cannot_silently_accept_an_oversized_single_frame(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            writer = SegmentedMJPEGAVIWriter(Path(temporary)/"c920.avi", 30, (96, 64),
+                                             max_file_size=300)
+            with self.assertRaisesRegex(AVISizeLimitError, "single JPEG frame"):
+                writer.write(encoded_frames()[0])
+            writer.release()
+            self.assertEqual(writer.frames, 0)
+            self.assertEqual(len(writer.segments), 1)
+            self.assertEqual(writer.segments[0]["frame_count"], 0)
+
     def test_variable_jpegs_round_trip_with_original_payloads_index_and_dimensions(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)/"raw.avi"

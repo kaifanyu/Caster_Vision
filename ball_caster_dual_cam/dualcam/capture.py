@@ -20,12 +20,14 @@ import cv2
 import numpy as np
 import yaml
 
-from .mjpeg_avi import MJPEGAVIWriter, jpeg_dimensions
+from .mjpeg_avi import MJPEGAVIWriter, SegmentedMJPEGAVIWriter, jpeg_dimensions
 
 
 CAMERAS = ("c920", "brio101")
 WARMUP_FRAMES = 5
 WARMUP_TIMEOUT_S = 15.0
+WORKER_STOP_TIMEOUT_S = 5.0
+FINAL_VERIFY_TIMEOUT_S = 2.0
 
 
 class CameraError(RuntimeError):
@@ -139,10 +141,10 @@ class V4L2Camera:
         self.profile = dict(camera_config["capture"])
         self.runner = runner
 
-    def command(self, *args):
+    def command(self, *args, timeout=12):
         try:
             result = self.runner(["v4l2-ctl", "-d", self.device, *args], capture_output=True,
-                                 text=True, check=False, timeout=12)
+                                 text=True, check=False, timeout=timeout)
         except FileNotFoundError as error:
             raise CameraError("v4l2-ctl is required; install the v4l-utils package.") from error
         except subprocess.TimeoutExpired as error:
@@ -230,8 +232,8 @@ class V4L2Camera:
                               "is not advertised. Run camera_setup.py --inspect.")
         return plan, absent
 
-    def verify_controls(self, plan):
-        actual = parse_controls(self.command("--list-ctrls-menus"))
+    def verify_controls(self, plan, *, timeout=12):
+        actual = parse_controls(self.command("--list-ctrls-menus", timeout=timeout))
         for name, expected in plan:
             value = actual.get(name, {}).get("value")
             if value != expected:
@@ -388,9 +390,23 @@ def timing_statistics(times, requested_fps):
             "drop_estimate_note": "Host interval estimate; camera frame counters are unavailable."}
 
 
-def record_session(config, config_path, output, duration, mode, stop_event=None):
-    if not math.isfinite(duration) or duration <= 0:
+def record_session(config, config_path, output, duration, mode, stop_event=None, *,
+                   max_video_file_bytes=None):
+    """Record both cameras for seconds, or until ``stop_event`` when duration is None.
+
+    File rotation is opt-in and requires native MJPG capture. Each manifest
+    segment uses global camera-frame indices, matching the single timestamp CSV.
+    """
+    if (duration is not None and
+            (isinstance(duration, bool) or not isinstance(duration, (int, float))
+             or not math.isfinite(duration) or duration <= 0)):
         raise CameraError("--duration must be a positive finite number of seconds.")
+    if max_video_file_bytes is not None:
+        if (isinstance(max_video_file_bytes, bool) or not isinstance(max_video_file_bytes, int)
+                or max_video_file_bytes <= 0):
+            raise CameraError("max_video_file_bytes must be a positive integer number of bytes.")
+        if any(config["cameras"][name]["capture"]["fourcc"] != "MJPG" for name in CAMERAS):
+            raise CameraError("Segmented recording requires MJPG capture on both cameras.")
     if mode not in ("roll", "swivel", "motion", "checkerboard"):
         raise CameraError("Unknown recording mode.")
     output = Path(output)
@@ -412,6 +428,7 @@ def record_session(config, config_path, output, duration, mode, stop_event=None)
     errors = []
     session = {"schema_version": 1, "mode": mode, "status": "starting",
                "requested_duration_s": duration, "config_snapshot": config,
+               "continuous": duration is None, "max_video_file_bytes": max_video_file_bytes,
                "config_sha256": sha256_file(config_path),
                "calibration_sha256": {name: sha256_file(resolve_rig_path(config_path, config[name]["path"]))
                                       for name in ("stereo", "axes") if config.get(name, {}).get("path")},
@@ -423,17 +440,21 @@ def record_session(config, config_path, output, duration, mode, stop_event=None)
     origin = None
 
     def save_manifest():
-        (output / "session.json").write_text(json.dumps(session, indent=2) + "\n")
+        # Readers see either complete manifest version, including during a long run.
+        temporary = output / "session.json.tmp"
+        temporary.write_text(json.dumps(session, indent=2) + "\n")
+        temporary.replace(output / "session.json")
 
     def stop_workers():
         stop.set()
         start.set()
+        deadline = time.monotonic() + WORKER_STOP_TIMEOUT_S
         for thread in threads:
             if thread not in joined_threads:
-                thread.join(timeout=5)
+                thread.join(timeout=max(0., deadline-time.monotonic()))
                 joined_threads.add(thread)
                 if thread.is_alive():
-                    errors.append(f"{thread.name}: camera read did not stop within 5 seconds.")
+                    errors.append(f"{thread.name}: camera read did not stop within {WORKER_STOP_TIMEOUT_S:g} seconds.")
 
     def worker(name):
         cap, writer = captures[name], writers[name]
@@ -457,13 +478,15 @@ def record_session(config, config_path, output, duration, mode, stop_event=None)
                     after = time.monotonic()
                     if not ok or frame is None:
                         raise CameraError(f"{name}: camera read failed; session ended.")
-                    if stop.is_set() or after - origin > duration:
+                    if stop.is_set() or (duration is not None and after - origin > duration):
                         break
                     validate_frame(frame, cameras[name], encoded=encoded)
                     writer.write(frame)
                     stamp = after - origin
                     table.writerow([len(times[name]), f"{stamp:.9f}", f"{before - origin:.9f}", f"{stamp:.9f}"])
                     times[name].append(stamp)
+                    if max_video_file_bytes is None:
+                        session["cameras"][name]["video_segments"][0]["frame_count"] = len(times[name])
         except Exception as error:
             errors.append(str(error))
             stop.set()
@@ -490,13 +513,20 @@ def record_session(config, config_path, output, duration, mode, stop_event=None)
             session["cameras"][name] = result
             p = camera.profile
             if p["fourcc"] == "MJPG":
-                writer = MJPEGAVIWriter(output / f"{name}.avi", p["fps"], (p["width"], p["height"]))
+                if max_video_file_bytes is None:
+                    writer = MJPEGAVIWriter(output / f"{name}.avi", p["fps"], (p["width"], p["height"]))
+                else:
+                    writer = SegmentedMJPEGAVIWriter(output / f"{name}.avi", p["fps"],
+                                                     (p["width"], p["height"]),
+                                                     max_file_size=max_video_file_bytes)
                 result["recording_storage"] = "camera_jpeg_passthrough_avi"
             else:
                 writer = cv2.VideoWriter(str(output / f"{name}.avi"), cv2.VideoWriter_fourcc(*"MJPG"),
                                          p["fps"], (p["width"], p["height"]))
                 result["recording_storage"] = "decoded_then_mjpeg_reencoded"
             writers[name] = writer
+            result["video_segments"] = (writer.segments if max_video_file_bytes is not None else
+                                        [{"path": f"{name}.avi", "start_frame": 0, "frame_count": 0}])
             if not writer.isOpened():
                 raise CameraError(f"Could not open MJPG video writer for {name}.")
         session["status"] = "warming_up"
@@ -515,21 +545,37 @@ def record_session(config, config_path, output, duration, mode, stop_event=None)
             time.sleep(0.01)
         if stop.is_set():
             raise CameraError("Recording stopped before its timed interval began.")
-        origin = time.monotonic()
+        anchor_before = time.monotonic()
+        unix_anchor = time.time()
+        anchor_after = time.monotonic()
+        origin = (anchor_before + anchor_after) / 2
         session["host_monotonic_zero_s"] = origin
-        session["started_unix_s"] = time.time()
+        session["started_unix_s"] = unix_anchor
+        session["clock_anchor"] = {"host_monotonic_before_s": anchor_before,
+                                   "unix_s": unix_anchor,
+                                   "host_monotonic_after_s": anchor_after,
+                                   "host_monotonic_midpoint_s": origin,
+                                   "uncertainty_s": (anchor_after-anchor_before)/2,
+                                   "note": "Host wall-clock/monotonic anchor; not camera exposure time or hardware synchronization."}
         session["warmup_elapsed_s"] = origin - warmup_started
         session["status"] = "recording"
         save_manifest()
-        print(f"Recording NOW for {duration:g} seconds ({mode}); camera warmup is complete.", flush=True)
+        interval = "until stopped" if duration is None else f"for {duration:g} seconds"
+        print(f"Recording NOW {interval} ({mode}); camera warmup is complete.", flush=True)
         start.set()
-        while time.monotonic() - origin < duration and not stop.is_set():
+        next_manifest = origin + 5
+        while (duration is None or time.monotonic() - origin < duration) and not stop.is_set():
+            if time.monotonic() >= next_manifest:
+                save_manifest()
+                next_manifest = time.monotonic() + 5
             time.sleep(0.02)
-        interrupted = stop.is_set() and not errors
+        session["recording_elapsed_s"] = time.monotonic() - origin
+        interrupted = duration is not None and stop.is_set() and not errors
         stop_workers()
         for name, camera in cameras.items():
             if not any(t.is_alive() for t in threads):
-                session["cameras"][name]["final_controls"] = camera.verify_controls(prepared[name][0])
+                session["cameras"][name]["final_controls"] = camera.verify_controls(
+                    prepared[name][0], timeout=FINAL_VERIFY_TIMEOUT_S)
         if not all(times.values()):
             errors.append("At least one camera recorded no frames.")
         session["status"] = "failed" if errors else "interrupted" if interrupted else "complete"
@@ -555,6 +601,7 @@ def record_session(config, config_path, output, duration, mode, stop_event=None)
         if errors:
             session["status"] = "failed"
         session["elapsed_s"] = time.monotonic() - origin if origin is not None else 0
+        session["finished_unix_s"] = time.time()
         session["stats"] = {name: timing_statistics(times[name], cameras[name].profile["fps"]) for name in CAMERAS}
         save_manifest()
     if errors:

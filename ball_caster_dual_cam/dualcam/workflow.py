@@ -175,11 +175,14 @@ def _write_motion_csv(path, fit):
             writer.writerow([frame, float(time), *radians, *degrees, *[int(x) for x in supported]])
 
 
-def run_motion(config_path, session, output, *, initial_roll_deg, max_frames=180):
+def run_motion(config_path, session, output, *, initial_roll_deg, max_frames=180,
+               allow_calibration_clip=False):
     """Fit one motion clip; alpha starts at a supplied absolute roll angle.
 
     Both shell spins are relative to this recording's first paired frame. No
     absolute painted-feature correspondence across sessions is assumed.
+    Explicitly permitted calibration clips are fitted with all angles free;
+    they provide a consistency check, not independent accuracy validation.
     """
     output = _output_directory(output)
     report_path = output / "results.json"
@@ -199,9 +202,16 @@ def run_motion(config_path, session, output, *, initial_roll_deg, max_frames=180
                       axes_sha256=axes["sha256"])
         tracked = track_session(session, cfg, max_frames=max_frames)
         save_tracks(output / "tracks.npz", tracked)
-        report.update(pairs=tracked["pairs"], session_report=tracked["session_report"])
-        if tracked["session_mode"] != "motion":
-            raise ValueError(f"Expected a --mode motion recording, got {tracked['session_mode']!r}")
+        recording_mode = tracked["session_mode"]
+        report.update(pairs=tracked["pairs"], session_report=tracked["session_report"],
+                      recording_mode=recording_mode)
+        if recording_mode != "motion":
+            if not allow_calibration_clip or recording_mode not in ("roll", "swivel"):
+                raise ValueError(f"Expected a --mode motion recording, got {recording_mode!r}. Use --allow-calibration-clip only for a roll/swivel consistency check.")
+            warning = "Replaying a calibration clip with all angles free. Reusing calibration data is a consistency check, not independent accuracy validation."
+            report["warnings"].append(warning)
+            report["evaluation"] = "calibration_clip_consistency_check"
+            print(f"Warning: {warning}", flush=True)
         F, pivot = axes["R_bc"], axes["pivot_c920_m"]
         dataset = _dataset(tracked, cameras, F, "motion", initial_roll_rad=float(np.deg2rad(initial_roll_deg)))
         geo = cfg["geometry"]

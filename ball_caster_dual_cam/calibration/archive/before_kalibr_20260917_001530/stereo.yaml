@@ -1,0 +1,4 @@
+# Written by scripts/calibrate_stereo.py. Translation is in METERS.
+convention: X_brio101=R_21@X_c920+t_21_m
+R_21: null
+t_21_m: null

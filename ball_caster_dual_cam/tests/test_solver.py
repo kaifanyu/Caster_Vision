@@ -95,6 +95,31 @@ class GeometryTests(unittest.TestCase):
 
 
 class JointFitTests(unittest.TestCase):
+    def test_close_large_image_shells_recover_axes_and_metric_pivot(self):
+        # Close webcams give much larger pixel derivatives than the distant
+        # fixtures. Recover centimeter-scale pivot bias alongside radian angles.
+        C = np.array([.01, -.003, .36])
+        center2 = np.array([-.25, .025, .015])
+        forward = C - center2
+        forward /= np.linalg.norm(forward)
+        right = np.cross([0., 1., 0.], forward)
+        right /= np.linalg.norm(right)
+        R = rotation_z(np.pi) @ np.stack([right, np.cross(forward, right), forward])
+        cameras = [
+            {'K': np.array([[1430., 0., 960.], [0., 1430., 540.], [0., 0., 1.]]),
+             'R': np.eye(3), 't': np.zeros(3)},
+            {'K': np.array([[1960., 0., 960.], [0., 1960., 540.], [0., 0., 1.]]),
+             'R': R, 't': -R @ center2}]
+        F = Rotation.from_euler('xyz', [-78., 3., 2.], degrees=True).as_matrix()
+        clips = [make_clip(cameras, F, C, mode, noise=.15, count=12, frames=12,
+                           seed=seed)[0] for mode, seed in (('roll', 5), ('swivel', 8))]
+        initial = Rotation.from_rotvec(np.deg2rad([3., -4., 2.])).as_matrix() @ F
+        out = fit_joint(clips, cameras, initial, C + [.008, -.006, .012],
+                        .1, .02, calibrate_axes=True, refine_pivot=True)
+        self.assertTrue(out['success'], out['diagnostics'])
+        self.assertLess(np.rad2deg(Rotation.from_matrix(out['F'] @ F.T).magnitude()), .8)
+        self.assertLess(np.linalg.norm(out['pivot'] - C), .002)
+
     def test_calibrates_biased_axes_and_pivot_with_noisy_oblique_views(self):
         cameras, F, C = setup_scene()
         roll, qr = make_clip(cameras, F, C, 'roll', noise=.08)

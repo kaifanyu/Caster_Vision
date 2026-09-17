@@ -152,6 +152,41 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual((root / "axes.yaml").read_bytes(), before)
             self.assertEqual(json.loads((root / "wrong_mode/report.json").read_text())["status"], "failed")
 
+    def test_calibration_clip_replay_requires_opt_in_and_does_not_force_pure_motion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path, _, cameras, F, pivot = rig_files(root)
+            # Deliberately label mixed motion as roll: replay must recover spins,
+            # not report the zero spins imposed during pure-roll calibration.
+            clip, expected = make_clip(cameras, F, pivot, "motion", noise=.03, count=6, frames=6)
+            tracked = tracked_clip(clip, "recorded_roll")
+            tracked["session_mode"] = "roll"
+            with patch("dualcam.workflow.track_session", return_value=tracked), \
+                 patch("dualcam.workflow.initialize_angles", return_value=clip["initial_angles"]):
+                with self.assertRaisesRegex(WorkflowError, "allow-calibration-clip"):
+                    run_motion(config_path, "roll", root / "without_opt_in", initial_roll_deg=0)
+                report = run_motion(config_path, "roll", root / "replay", initial_roll_deg=0,
+                                    allow_calibration_clip=True)
+            self.assertTrue(report["success"], report["fit"]["diagnostics"])
+            self.assertEqual(report["recording_mode"], "roll")
+            self.assertEqual(report["evaluation"], "calibration_clip_consistency_check")
+            self.assertTrue(any("not independent" in warning for warning in report["warnings"]))
+            self.assertGreater(np.max(np.abs(expected[:, 1:])), .1)
+            np.testing.assert_allclose(report["fit"]["datasets"][0]["angles"], expected, atol=.02)
+            self.assertEqual(tracked["session_mode"], "roll")
+
+    def test_calibration_clip_opt_in_still_rejects_checkerboard_recordings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path, _, cameras, F, pivot = rig_files(root)
+            clip, _ = make_clip(cameras, F, pivot, "motion", count=4, frames=5)
+            tracked = tracked_clip(clip, "board")
+            tracked["session_mode"] = "checkerboard"
+            with patch("dualcam.workflow.track_session", return_value=tracked):
+                with self.assertRaisesRegex(WorkflowError, "checkerboard"):
+                    run_motion(config_path, "board", root / "rejected_board", initial_roll_deg=0,
+                               allow_calibration_clip=True)
+
     def test_unverified_timing_and_missing_profiles_are_reported_without_rejection(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

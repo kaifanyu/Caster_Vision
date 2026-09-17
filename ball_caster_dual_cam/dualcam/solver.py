@@ -287,8 +287,15 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
                                 * np.sqrt(d['obs']['weight'])[:, None]).ravel()
                                for d in prepared])
 
+    # Use physical parameter scales rather than inverse Jacobian column norms.
+    # With robust loss and weak surface landmarks, automatic column scaling can
+    # stall the shared geometry while reporting a small-step termination.
+    # Angles/landmark coordinates are radians; pivot coordinates are meters.
+    parameter_scale = np.ones(len(x0))
+    if pivot_slice is not None:
+        parameter_scale[pivot_slice] = .1 * radius_m
     result = least_squares(residual, x0, bounds=(lower, upper),
-                           jac_sparsity=sparsity.tocsr(), x_scale='jac',
+                           jac_sparsity=sparsity.tocsr(), x_scale=parameter_scale,
                            loss='soft_l1', f_scale=cfg['robust_px'],
                            max_nfev=cfg['max_nfev'],
                            ftol=cfg.get('ftol', 1e-7), xtol=cfg.get('xtol', 1e-7),
@@ -414,5 +421,7 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
     return {'success': success, 'F': F, 'pivot': C, 'datasets': outputs,
             'diagnostics': {'reasons': reasons, 'optimizer_message': result.message,
                             'nfev': result.nfev, 'cost': float(result.cost),
+                            'parameter_scaling': 'angles: 1 rad; pivot: 0.1 * shell radius',
+                            'optimality': float(result.optimality),
                             'per_camera': camera_stats,
                             'axis_singular_values': axis_singular_values}}

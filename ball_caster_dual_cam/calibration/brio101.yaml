@@ -1,25 +1,33 @@
-# Camera 2 (Brio 101): imported from the supplied Kalibr cam0 entry.
-# Kalibr pinhole [fx,fy,cx,cy]; radtan/OpenCV distortion order [k1,k2,p1,p2].
-# capture_profile remains unverified because original capture settings were not supplied.
 calibration_kind: intrinsics
 image_size:
 - 1920
 - 1080
 K:
-- - 1964.0387320102514
+- - 1958.481344320857
   - 0.0
-  - 921.6217788330248
+  - 943.0431124967643
 - - 0.0
-  - 1962.530141271585
-  - 507.3043296802831
+  - 1960.0300482761184
+  - 504.23125944834015
 - - 0.0
   - 0.0
   - 1.0
 dist:
-- 0.13695826689455187
-- -0.4731705328934184
-- 0.00032657961188102666
-- -0.000976736040875075
+- 0.16101704072073456
+- -0.6534827255885431
+- 0.0022949176455677443
+- 0.0032186787366936974
 capture_profile: null
 camera_model: pinhole
 distortion_model: radtan
+source:
+  tool: Kalibr
+  camchain_file: kalibr_camchain.yaml
+  source_file: /home/hamr/hamster_ws/stereo-camchain.yaml
+  source_sha256: 53cff4a590cd2972073abcd0d48f0636b26b2e0cdfec924f7b5ff93bf5636e67
+  calibration_id: stereo_checkerboard_rot180_20260917
+  image_coordinates: original_unrotated
+  imported_utc: '2026-09-17T20:27:33.893040+00:00'
+  camera: cam1
+  rostopic: /cam1/image_raw
+  capture_profile_note: The supplied camchain does not record capture settings.

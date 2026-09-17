@@ -9,10 +9,11 @@ separated by the physical rim gap and move with roll. Camera 1 is the C920.
 The original `../ball_caster_rot` project is unchanged. Reused segmentation,
 tracking and rotation initialization modules are documented in `VENDORED.md`.
 
-**Required measured inputs are intentionally blank.** No previous camera matrix,
-640×480 photo calibration, stereo transform, or manual focus position has been
-silently adopted. The supplied 100 mm shell radius and 20 mm gap come from the
-original project's configuration; verify these physical dimensions on your rig.
+**The supplied Kalibr intrinsics and stereo transform are imported.** Axis
+calibration and measured camera timing are still pending. The supplied 100 mm
+shell radius and 20 mm gap come from the original project's configuration;
+verify these physical dimensions on your rig. See the
+[current calibration results and next steps](docs/KALIBR_NEXT_STEPS.md).
 
 ## Files you edit
 
@@ -40,14 +41,30 @@ Python packages are listed in `requirements.txt`; `v4l2-ctl` comes from Linux
 create a virtual environment and install `requirements.txt`. No ROS node is
 required. GUI preview commands require a graphical desktop.
 
+## Recording during ROS hardware trajectories
+
+`hamr_bringup/hamr_HW.launch.xml` now starts both cameras by default using this
+checkout's `config/rig.yaml`. Wait for `Recording NOW`, then run the separate
+`ros2 run reference_trajectory waypoint_traj_simple` command as usual. Ctrl+C on
+the hardware launch finalizes both recordings. Videos, receive-timestamp CSVs and
+`session.json` are saved in a new `~/hamster_ws/recordings/dual_cam_*` directory.
+Long recordings use numbered AVI parts without restarting camera capture; keep
+all parts with the manifest. The pipeline's video reader follows the parts.
+
+See [the ROS recording guide](../../hamster_ws/src/hamr_control/hamr_bringup/CAMERA_RECORDING.md)
+for build instructions, camera-only checks, output details and launch overrides.
+The integration records motion for offline analysis; it does not start the
+trajectory publisher or apply a live caster estimate to robot control.
+
 ## 1. Fix the cameras' capture settings
 
 Read [the complete camera guide](docs/CAMERA_SETUP.md) for lighting, focus trials,
 device controls, and synchronization limitations.
 
 The saved profiles use **1920×1080, MJPG, 30 fps, fixed gain 180 and 4000 K white
-balance**. Exposure is **7700 µs on C920** and **8000 µs on Brio 101**, tested under
-the mounted rig's lighting. C920 focus is locked at **50**, zoom at **100**.
+balance**. Read the current `exposure_us` values from `config/rig.yaml`; the
+historical readiness report used 7700 µs on C920 and 8000 µs on Brio 101, and
+the C920 setting has since been adjusted. C920 focus is locked at **50**, zoom at **100**.
 See [the readiness report](docs/CAMERA_READINESS.md) for measurements and remaining
 lighting/calibration requirements. Increase illumination before shortening exposure
 for faster motion. The circles and color thresholds are specific to this mounting.
@@ -86,6 +103,10 @@ success. The recorder reapplies the profile **after streaming starts**, drains
 warmup frames and checks controls before either recording clock starts. It saves
 the cameras' original MJPEG frames without JPEG re-encoding and uses four buffers
 to avoid the observed Brio frame-rate loss with a single buffer.
+Offline AVI reading prefers OpenCV's native MJPEG decoder to tolerate the Brio's
+short APP0 metadata block, which older FFmpeg versions report as `unable to decode
+APP fields`. Original recordings, frame order, and timestamp CSVs are preserved;
+other codecs or builds without that reader fall back to the default backend.
 Keep resolution, image orientation, crop, focus, zoom, illumination, and mounts
 consistent. Keep physical red/green identities even when a view is upside down.
 
@@ -154,6 +175,14 @@ Stereo outputs include hashes of both intrinsic calibration files, preventing
 accidental reuse after intrinsics change. The underlying fixed-intrinsics method
 is OpenCV `stereoCalibrate`. [OpenCV reference](https://docs.opencv.org/4.13.0/d9/d0c/group__calib3d.html)
 
+The supplied Kalibr calibration is now imported in `calibration/c920.yaml`
+(`cam0`), `calibration/brio101.yaml` (`cam1`), and `calibration/stereo.yaml`.
+The original numerical result is preserved in `calibration/kalibr_camchain.yaml`.
+Kalibr's `cam1.T_cn_cnm1` maps cam0 coordinates to cam1 coordinates, matching
+`R_21`/`t_21_m` directly. [Kalibr convention](https://github.com/ethz-asl/kalibr/wiki/yaml-formats)
+With the mounts unchanged, proceed to axis calibration; there is no need to run
+the checkerboard stereo command again. Keep the same resolution, focus and zoom.
+
 **Timing is a separate measurement.** Both webcams use independent capture
 threads and one host monotonic clock, but timestamps record frame-read completion,
 not guaranteed exposure time. Record a repeated common flash or another sharp
@@ -166,11 +195,15 @@ The tracker pairs each C920 frame to at most one Brio frame within
 bounds the **corrected host timestamps**, not unknown sensor/USB latency. These
 webcams cannot provide hardware-triggered synchronization through this recorder.
 Use moderate calibration speeds; fast motion/rolling shutter remains a limitation.
+Feature tracking follows every native image between the first and last selected
+pair, including unpaired images, to preserve track identities across pairing gaps.
+Only observations at the selected pairs enter the joint geometric fit. A track
+lost in an intermediate image gets a new identity; gaps are not interpolated.
 
 ## 4. Record pure roll and pure swivel; inspect tracking masks
 
 Both clips must start at the **same known mechanical home roll**. Keep the caster
-at home during startup. Wait for `Recording NOW`, hold home for one more second,
+at home during startup. Wait for `Recording NOW`, hold home for three seconds,
 then perform one isolated, monotonic
 motion through a useful range, preferably 20–60 degrees or more with clear marks:
 
@@ -180,8 +213,8 @@ motion through a useful range, preferably 20–60 degrees or more with clear mar
   their speeds can differ.
 
 ```bash
-python3 scripts/record.py --mode roll --duration 6 --output data/roll_01
-python3 scripts/record.py --mode swivel --duration 6 --output data/swivel_01
+python3 scripts/record.py --mode roll --duration 10 --output data/roll_01
+python3 scripts/record.py --mode swivel --duration 10 --output data/swivel_01
 python3 scripts/preview.py --session data/roll_01 --camera c920 --frame 0 --output out/c920_masks.png
 python3 scripts/preview.py --session data/roll_01 --camera brio101 --frame 0 --output out/brio_masks.png
 ```
@@ -197,7 +230,7 @@ rig after review. `--circle U V R` is another preview-only trial.
 ## 5. Jointly calibrate axes, then measure motion
 
 ```bash
-python3 scripts/calibrate_axes.py --roll data/roll_01 --swivel data/swivel_01 --output out/axes_01
+python3 scripts/calibrate_axes.py --roll data/roll_01 --swivel data/swivel_01 --max-frames 300 --output out/axes_01
 ```
 
 `--roll-sign -1` / `--swivel-sign -1` describe a calibration recording made in the
@@ -210,6 +243,24 @@ The tool saves `report.json`, `roll_tracks.npz`, and `swivel_tracks.npz`. It wri
 `calibration/axes.yaml` only if the fit converges and passes motion-excitation,
 axis-rank, visibility, surface-spread, residual, and support checks. Rejected fits
 return exit code 2 and preserve an earlier accepted axes file.
+
+After a successful axis fit, replay the pure-roll recording itself with all three
+angles free to check for unwanted estimated shell spin:
+
+```bash
+python3 scripts/run.py --session data/roll_01 --allow-calibration-clip --initial-roll-deg 0 --max-frames 300 --output out/roll_check_01
+python3 scripts/render.py --results out/roll_check_01/results.json --output out/roll_check_01/overlays
+```
+
+Use a new output directory each run. This opt-in leaves the recorded session mode
+unchanged and applies the general-motion model: it does **not** force the two spins
+to zero. In a pure-roll clip, supported `alpha_deg` should change while supported
+`beta_red_deg` and `beta_green_deg` stay near their starting zero. Review validity
+flags, residuals and overlays as well as the curves. There is no measured accuracy
+tolerance yet; reusing the calibration clip checks consistency, not accuracy on
+new data. A separate roll check and mixed-motion recording provide a stronger
+test. A pure-roll clip alone does not calibrate both axes; the swivel clip is
+still required by `calibrate_axes.py`.
 
 Record a general-motion session and supply its **known initial roll relative to
 calibrated home**; use zero only when physically at home:

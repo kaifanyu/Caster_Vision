@@ -1,11 +1,9 @@
 # All file paths are relative to THIS config file, not the working directory.
-# Calibration: stereo_checkerboard_rot180_20260917, converted to ORIGINAL optical coordinates.
-# Use original, UNROTATED 1920x1080 C920 and Brio 101 images with the referenced files.
 schema_version: 1
 cameras:
   c920:
     device: /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_05577B1F-video-index0
-    intrinsics: ../calibration/c920.yaml # Kalibr cam0; original C920 pixels
+    intrinsics: ../calibration/c920.yaml
     capture:
       width: 1920
       height: 1080
@@ -32,7 +30,7 @@ cameras:
       boundary_margin_px: 1
   brio101:
     device: /dev/v4l/by-id/usb-046d_Brio_101_2516APNGPSE8-video-index0
-    intrinsics: ../calibration/brio101.yaml # Kalibr cam1; original Brio pixels
+    intrinsics: ../calibration/brio101.yaml
     capture:
       width: 1920
       height: 1080
@@ -57,7 +55,7 @@ cameras:
       morphology_px: 3
       boundary_margin_px: 1
 stereo:
-  path: ../calibration/stereo.yaml # X_brio = R_21 @ X_c920 + t_21_m; meters
+  path: ../calibration/stereo.yaml
 axes:
   path: ../calibration/axes.yaml
 geometry:

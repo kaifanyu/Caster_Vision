@@ -1,0 +1,30 @@
+calibration_kind: intrinsics
+image_size:
+- 1920
+- 1080
+K:
+- - 1956.735470317774
+  - 0.0
+  - 914.279603423291
+- - 0.0
+  - 1962.890230914812
+  - 497.8681503353404
+- - 0.0
+  - 0.0
+  - 1.0
+dist:
+- 0.13202465126779866
+- -0.5210236561691168
+- -0.0012105660223549722
+- -0.007323912702681655
+capture_profile: null
+camera_model: pinhole
+distortion_model: radtan
+source:
+  tool: Kalibr
+  camchain_file: kalibr_camchain.yaml
+  camera: cam1
+  rostopic: /cam1/image_raw
+  imported_utc: '2026-09-17T04:15:30.668127+00:00'
+  capture_profile_note: Kalibr result supplied by user; exact calibration input manifest
+    was not supplied. Do not claim complete capture-profile verification.

@@ -1,0 +1,59 @@
+# ORIGINAL, UNROTATED C920 and Brio 101 images, 1920x1080.
+# Exact coordinate conversion of stereo_checkerboard_rot180_20260917.
+# cam1.T_cn_cnm1 maps raw C920 optical coordinates to Brio coordinates.
+# Translation is in meters. Do not rotate input images.
+cam0:
+  cam_overlaps:
+  - 1
+  camera_model: pinhole
+  distortion_coeffs:
+  - 0.04824211605148169
+  - -0.17446720249037673
+  - -0.002094080874366225
+  - 0.0015257212046973843
+  distortion_model: radtan
+  intrinsics:
+  - 1433.8830731381593
+  - 1436.0591195513541
+  - 947.7289396553851
+  - 554.8037320456973
+  resolution:
+  - 1920
+  - 1080
+  rostopic: /cam0/image_raw
+cam1:
+  T_cn_cnm1:
+  - - -0.7827277593830596
+    - -0.1313376534082946
+    - -0.6083483175684603
+    - 0.2077217804821981
+  - - 0.13052346840965365
+    - -0.9903831406075823
+    - 0.045878742295037765
+    - -0.01264486457885215
+  - - -0.6085235236911453
+    - -0.043493167250305186
+    - 0.7923430226341668
+    - 0.14582213774282674
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  cam_overlaps:
+  - 0
+  camera_model: pinhole
+  distortion_coeffs:
+  - 0.16101704072073456
+  - -0.6534827255885431
+  - 0.0022949176455677443
+  - 0.0032186787366936974
+  distortion_model: radtan
+  intrinsics:
+  - 1958.481344320857
+  - 1960.0300482761184
+  - 943.0431124967643
+  - 504.23125944834015
+  resolution:
+  - 1920
+  - 1080
+  rostopic: /cam1/image_raw

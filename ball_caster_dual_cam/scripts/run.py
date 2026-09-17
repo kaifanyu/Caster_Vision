@@ -16,10 +16,13 @@ def main(argv=None):
     parser.add_argument("--output", required=True, help="New/empty results directory")
     parser.add_argument("--initial-roll-deg", type=float, required=True, help="KNOWN absolute roll at the first paired frame, relative to calibrated home; use 0 only when held at home")
     parser.add_argument("--max-frames", type=int, default=180)
+    parser.add_argument("--allow-calibration-clip", action="store_true",
+                        help="Replay a roll/swivel recording with all angles free as a consistency check; reusing calibration data is not independent validation")
     args = parser.parse_args(argv)
     try:
         report = run_motion(args.config, args.session, args.output,
-                            initial_roll_deg=args.initial_roll_deg, max_frames=args.max_frames)
+                            initial_roll_deg=args.initial_roll_deg, max_frames=args.max_frames,
+                            allow_calibration_clip=args.allow_calibration_clip)
     except (OSError, ValueError) as exc:
         print(f"Motion fit failed: {exc}", file=sys.stderr)
         return 2

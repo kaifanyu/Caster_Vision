@@ -15,6 +15,10 @@ SOF_MARKERS = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
                0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
 
 
+class AVISizeLimitError(ValueError):
+    """A frame would exceed the finalized classic AVI file-size limit."""
+
+
 def jpeg_payload(data):
     """Return the original JPEG, trimming up to 31 bytes of UVC buffer padding.
 
@@ -128,7 +132,7 @@ class MJPEGAVIWriter:
         # Reserve the complete index now, so release() never exceeds the limit.
         projected_size = position + 8 + length + (length & 1) + 8 + len(self.index) + 16
         if projected_size > self.limit or self.frames >= UINT32_MAX:
-            raise ValueError("Classic AVI RIFF size limit reached; start a new recording session.")
+            raise AVISizeLimitError("Classic AVI RIFF size limit reached; start a new recording session.")
         self.stream.write(b"00dc" + struct.pack("<I", length))
         self.stream.write(data)
         if length & 1:
@@ -158,3 +162,57 @@ class MJPEGAVIWriter:
             self.stream.flush()
         finally:
             self.stream.close()
+
+
+class SegmentedMJPEGAVIWriter:
+    """Rotate bounded classic AVI files without changing JPEGs or frame order.
+
+    ``segments`` is the live manifest: paths are relative basenames and indices
+    refer to the complete camera stream, including every previous segment.
+    """
+    def __init__(self, path, fps, image_size, *, max_file_size=1024**3):
+        if (isinstance(max_file_size, bool) or not isinstance(max_file_size, int)
+                or max_file_size <= 0):
+            raise ValueError("AVI segment size must be a positive integer number of bytes.")
+        self.path = Path(path)
+        self.fps, self.image_size = fps, image_size
+        self.limit = min(max_file_size, UINT32_MAX+8)
+        self.frames = 0
+        self.segments = []
+        self._closed = False
+        self.writer = self._open_segment()
+
+    def _open_segment(self):
+        index = len(self.segments)
+        path = (self.path if index == 0 else
+                self.path.with_name(f"{self.path.stem}_{index:04d}{self.path.suffix}"))
+        writer = MJPEGAVIWriter(path, self.fps, self.image_size, max_file_size=self.limit)
+        self.segments.append({"path": path.name, "start_frame": self.frames, "frame_count": 0})
+        return writer
+
+    def isOpened(self):
+        return not self._closed and self.writer.isOpened()
+
+    def write(self, data):
+        if self._closed:
+            raise ValueError("Cannot write a finalized segmented AVI.")
+        try:
+            self.writer.write(data)
+        except AVISizeLimitError:
+            if self.writer.frames == 0:
+                raise AVISizeLimitError("A single JPEG frame cannot fit within the AVI segment size limit.")
+            self.writer.release()
+            self.writer = self._open_segment()
+            try:
+                self.writer.write(data)
+            except AVISizeLimitError as error:
+                raise AVISizeLimitError("A single JPEG frame cannot fit within the AVI segment size limit.") from error
+        self.frames += 1
+        self.segments[-1]["frame_count"] += 1
+
+    def release(self):
+        if not self._closed:
+            try:
+                self.writer.release()
+            finally:
+                self._closed = True

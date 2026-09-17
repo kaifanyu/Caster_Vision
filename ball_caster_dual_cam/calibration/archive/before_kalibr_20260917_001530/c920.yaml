@@ -1,0 +1,25 @@
+# Camera 1 (C920): K/dist copied from ball_caster_rot/config.yaml.
+# Image size follows the dual-camera 1920x1080 capture mode.
+# capture_profile remains unverified because original capture settings were not supplied.
+calibration_kind: intrinsics
+image_size:
+- 1920
+- 1080
+K:
+- - 1407.09
+  - 0.0
+  - 945.81
+- - 0.0
+  - 1407.12
+  - 562.09
+- - 0.0
+  - 0.0
+  - 1.0
+dist:
+- 0.03408
+- -0.0757
+- -0.00061
+- 0.000899
+capture_profile: null
+camera_model: pinhole
+distortion_model: radtan
