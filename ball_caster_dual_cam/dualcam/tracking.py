@@ -68,7 +68,9 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
         collected = {}
         previous = previous_masks = None
         paired_indices = {int(source): i for i, source in enumerate(session["pairs"][:, camera_id])}
-        previous_paired_points = None
+        interval_rotation = np.tile(np.eye(3), (2, 1, 1))
+        interval_support = np.full(2, np.iinfo(np.int32).max, dtype=int)
+        interval_valid = np.ones(2, dtype=bool)
         try:
             # Keep identities through unpaired source frames. Jumping directly
             # between selected pairs can destroy home tracks across a timing gap.
@@ -88,6 +90,19 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
                     matches = tracker.track_pair(previous, frame, previous_masks, masks)
                     for shell, old_name in enumerate(("top", "bottom")):
                         match = matches[old_name]
+                        # Compose small rotations through every native image,
+                        # even when no track survives the entire paired gap.
+                        estimate = None
+                        if match.count >= 8:
+                            estimate = solve_hemisphere_increment(
+                                match.uv_prev, match.uv_curr, info["K"], C,
+                                ransac_iters=120, min_inliers=8, rng=7+source_index)
+                        if estimate is not None and estimate.success:
+                            interval_rotation[shell] = estimate.R @ interval_rotation[shell]
+                            interval_support[shell] = min(interval_support[shell], estimate.inlier_count)
+                        else:
+                            # Missing evidence is never treated as zero motion.
+                            interval_valid[shell] = False
                         if match.count:
                             # Pixels survive only the measured forward/backward LK test.
                             # The approximate sphere is NOT used to reject pixel tracks.
@@ -100,28 +115,14 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
                                         key = (shell, fi, int(identifier))
                                         collected[key] = (camera_id, shell, fi, int(identifier), uv, weight)
                 if frame_index is not None:
-                    points = []
-                    for shell, old_name in enumerate(("top", "bottom")):
-                        uv, identifiers = tracker.points(old_name)
-                        current = {int(identifier): point for identifier, point in zip(identifiers, uv)}
-                        points.append(current)
-                        if previous_paired_points is not None:
-                            prior = previous_paired_points[shell]
-                            common = sorted(prior.keys() & current.keys())
-                            if len(common) >= 8:
-                                # Endpoint correspondences retain IDs only if
-                                # every intermediate KLT step survived. This is
-                                # the rotation BETWEEN paired frames, not just
-                                # the last native-frame increment.
-                                estimate = solve_hemisphere_increment(
-                                    np.asarray([prior[k] for k in common]),
-                                    np.asarray([current[k] for k in common]), info["K"], C,
-                                    ransac_iters=120, min_inliers=8, rng=7+frame_index,
-                                )
-                                if estimate.success:
-                                    increments[camera_id, shell, frame_index-1] = estimate.R
-                                    support[camera_id, shell, frame_index-1] = estimate.inlier_count
-                    previous_paired_points = points
+                    if frame_index:
+                        for shell in range(2):
+                            if interval_valid[shell]:
+                                increments[camera_id, shell, frame_index-1] = interval_rotation[shell]
+                                support[camera_id, shell, frame_index-1] = interval_support[shell]
+                    interval_rotation[:] = np.eye(3)
+                    interval_support[:] = np.iinfo(np.int32).max
+                    interval_valid[:] = True
                 previous, previous_masks = frame, masks
                 if progress and frame_index is not None and (frame_index+1) % 30 == 0:
                     progress(f"{name}: tracked {frame_index+1}/{n} paired frames", flush=True)
@@ -133,14 +134,61 @@ def track_session(path, cfg, *, max_frames=180, progress=print):
     columns = list(zip(*rows))
     observations = {key: np.asarray(values, dtype=int if key in ("camera", "shell", "frame", "track") else float)
                     for key, values in zip(("camera", "shell", "frame", "track", "uv", "weight"), columns)}
+    available = np.isfinite(increments).all(axis=(-2, -1))
+    missing_intervals = [
+        {'shell': shell, 'from_s': float(session['times'][i]), 'to_s': float(session['times'][i+1])}
+        for shell in range(2) for i in np.flatnonzero(~available[:, shell].any(axis=0))]
+    if progress and missing_intervals:
+        progress(f"Warning: {len(missing_intervals)} shell intervals have no rotation initializer in either camera; "
+                 "angle initialization holds the previous guess there. Pixel-fit support is still required.", flush=True)
     return {"observations": observations, "times": session["times"],
             "increments": increments, "increment_support": support,
             "circles": np.asarray(circles), "pairs": session["pairs"], "session": str(session["path"]),
             "session_report": {**session["report"],
                                "tracking_image_policy": "Track every native image between first and last selected pair; fit only paired observations.",
+                               "rotation_initializer_policy": "Compose every native-frame rotation; reject intervals with any missing step.",
+                               "rotation_initializer_missing_intervals": missing_intervals,
                                "tracked_source_frames": (session["pairs"][-1]-session["pairs"][0]+1).tolist()},
             "session_mode": session["metadata"].get("mode"),
             "intrinsics": intrinsics}
+
+
+def check_home_hold(tracked, duration_s, *, min_points=8, max_displacement_px=2.0):
+    """Check an operator-declared stationary home interval against pixel tracks."""
+    times = np.asarray(tracked['times'])
+    if not np.isfinite(duration_s) or duration_s < 0:
+        raise ValueError('home_hold_s must be finite and nonnegative')
+    if duration_s == 0:
+        return {'duration_s': 0., 'frames': 1, 'method': 'first paired frame only'}
+    frames = np.flatnonzero(times-times[0] <= duration_s)
+    if duration_s >= times[-1]-times[0] or len(frames) < 3:
+        raise ValueError('Home hold needs at least three paired frames and must end before the clip ends')
+    obs = tracked['observations']
+    details = []
+    for ci in range(2):
+        for sh in range(2):
+            selected = (obs['camera'] == ci) & (obs['shell'] == sh)
+            at_zero = selected & (obs['frame'] == 0)
+            reference = dict(zip(obs['track'][at_zero], obs['uv'][at_zero]))
+            maximum = 0.
+            minimum_count = len(reference)
+            for f in frames[1:]:
+                at_frame = selected & (obs['frame'] == f)
+                displacements = [np.linalg.norm(uv-reference[track])
+                                 for track, uv in zip(obs['track'][at_frame], obs['uv'][at_frame])
+                                 if track in reference]
+                minimum_count = min(minimum_count, len(displacements))
+                if len(displacements) < min_points:
+                    raise ValueError(f'{CAMERA_NAMES[ci]} shell {sh}: too few home tracks to verify the declared stationary interval')
+                maximum = max(maximum, float(np.median(displacements)))
+            if maximum > max_displacement_px:
+                raise ValueError(f'{CAMERA_NAMES[ci]} shell {sh}: declared home interval moves {maximum:.2f} px '
+                                 f'(limit {max_displacement_px:g}); shorten --home-hold-s or record a stable home hold')
+            details.append({'camera': CAMERA_NAMES[ci], 'shell': sh,
+                            'minimum_reference_tracks': minimum_count,
+                            'max_median_displacement_px': maximum})
+    return {'duration_s': float(duration_s), 'frames': len(frames),
+            'max_displacement_px': max_displacement_px, 'per_camera_shell': details}
 
 
 def common_increments(tracked, cameras, shell=None):

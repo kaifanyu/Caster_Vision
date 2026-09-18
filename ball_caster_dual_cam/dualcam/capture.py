@@ -407,7 +407,7 @@ def record_session(config, config_path, output, duration, mode, stop_event=None,
             raise CameraError("max_video_file_bytes must be a positive integer number of bytes.")
         if any(config["cameras"][name]["capture"]["fourcc"] != "MJPG" for name in CAMERAS):
             raise CameraError("Segmented recording requires MJPG capture on both cameras.")
-    if mode not in ("roll", "swivel", "motion", "checkerboard"):
+    if mode not in ("roll", "swivel", "motion", "checkerboard", "timing"):
         raise CameraError("Unknown recording mode.")
     output = Path(output)
     if output.exists():

@@ -10,7 +10,7 @@ import numpy as np
 from .config import (CAMERA_NAMES, calibration_hashes_match, load_config, load_rig,
                      read_yaml, rotation, sha256, write_json, write_yaml)
 from .solver import fit_joint
-from .tracking import (initialize_angles, initialize_axes, initialize_pivot,
+from .tracking import (check_home_hold, initialize_angles, initialize_axes, initialize_pivot,
                        save_tracks, track_session)
 
 
@@ -101,7 +101,7 @@ def _session_info(tracked):
 
 
 def calibrate_axes(config_path, roll_session, swivel_session, output, *,
-                   max_frames=180, roll_sign=1, swivel_sign=1):
+                   max_frames=180, roll_sign=1, swivel_sign=1, home_hold_s=0.):
     """Jointly refine axes/pivot from separate pure-motion, known-home clips.
 
     Both recordings must begin with the caster held at the SAME known home pose.
@@ -117,6 +117,8 @@ def calibrate_axes(config_path, roll_session, swivel_session, output, *,
     try:
         if roll_sign not in (-1, 1) or swivel_sign not in (-1, 1):
             raise ValueError("roll_sign and swivel_sign must be +1 or -1")
+        if not np.isfinite(home_hold_s) or home_hold_s < 0:
+            raise ValueError('home_hold_s must be finite and nonnegative')
         cfg = load_config(config_path)
         cameras, intrinsics, stereo = load_rig(cfg)
         _record_provenance(report, cfg, intrinsics)
@@ -129,12 +131,16 @@ def calibrate_axes(config_path, roll_session, swivel_session, output, *,
             report[label] = _session_info(clip)
             if clip["session_mode"] != label:
                 raise ValueError(f"Expected a --mode {label} recording, got {clip['session_mode']!r} for {session}")
+            report[label]['home_hold_check'] = check_home_hold(
+                clip, home_hold_s, min_points=cfg.get('solver', {}).get('min_points_per_frame', 8))
             tracked.append(clip)
         F, initialization = initialize_axes(*tracked, cameras, cfg,
                                             roll_sign=roll_sign, swivel_sign=swivel_sign)
         pivot = initialize_pivot(tracked[0], cameras, cfg)
         report["initialization"] = {"axes": initialization, "R_bc": F, "pivot_c920_m": pivot}
         datasets = [_dataset(clip, cameras, F, label) for clip, label in zip(tracked, ("roll", "swivel"))]
+        for dataset in datasets:
+            dataset['home_hold_s'] = home_hold_s
         geo = cfg["geometry"]
         print(f"Fitting shared axes and pivot: {len(datasets[0]['times'])} roll pairs and {len(datasets[1]['times'])} swivel pairs. This joint optimization may take time.", flush=True)
         result = fit_joint(datasets, cameras, F, pivot, geo["radius_m"], geo["gap_m"],
@@ -153,7 +159,8 @@ def calibrate_axes(config_path, roll_session, swivel_session, output, *,
                     "calibration_hashes": report["calibration_hashes"], "timing": cfg["timing"],
                     "home_reference": {"description": "Both clips start at the same known caster home; angles at each clip's first paired frame are [0,0,0].",
                                        "roll_session": report["roll_session"], "swivel_session": report["swivel_session"],
-                                       "frame0_angles_rad": [0., 0., 0.], "roll_sign": roll_sign, "swivel_sign": swivel_sign},
+                                       "frame0_angles_rad": [0., 0., 0.], "home_hold_s": home_hold_s,
+                                       "roll_sign": roll_sign, "swivel_sign": swivel_sign},
                     "diagnostics_report": str(report_path)}
             write_yaml(cfg["axes"]["path"], axes)
         return report

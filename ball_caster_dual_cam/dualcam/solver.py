@@ -16,8 +16,8 @@ from .model import (initialize_surface_point, points_to_polar, polar_to_points,
                     project, world_points)
 
 
-def _components(frame, track, n, selected, min_track_frames):
-    """Frames joined by accepted tracks and connected to known home frame 0."""
+def _components(frame, track, n, selected, min_track_frames, home_frames=None):
+    """Frames joined by accepted tracks to an observed, known home pose."""
     parent = np.arange(n)
 
     def root(a):
@@ -35,7 +35,9 @@ def _components(frame, track, n, selected, min_track_frames):
         first = root(int(fs[0]))
         for f in fs[1:]:
             parent[root(int(f))] = first
-    return np.array([seen[f] and root(f) == root(0) for f in range(n)])
+    anchors = [0] if home_frames is None else np.flatnonzero(home_frames)
+    roots = {root(int(f)) for f in anchors if seen[f]}
+    return np.array([seen[f] and root(f) in roots for f in range(n)])
 
 
 def _support(data, accepted, min_points, min_track_frames):
@@ -43,13 +45,13 @@ def _support(data, accepted, min_points, min_track_frames):
     valid = np.zeros((n, 3), dtype=bool)
     counts = np.bincount(obs['frame'][accepted], minlength=n)
     connected = _components(obs['frame'], obs['landmark'], n,
-                            accepted, min_track_frames)
+                            accepted, min_track_frames, data.get('home_frames'))
     valid[:, 0] = connected & (counts >= min_points)
     for h in (0, 1):
         selected = accepted & (obs['shell'] == h)
         counts = np.bincount(obs['frame'][selected], minlength=n)
         connected = _components(obs['frame'], obs['landmark'], n,
-                                selected, min_track_frames)
+                                selected, min_track_frames, data.get('home_frames'))
         valid[:, h + 1] = connected & (counts >= min_points)
     return valid
 
@@ -70,6 +72,11 @@ def _prepare(dataset, cameras, F, pivot, radius, gap, red_sign, min_track_frames
         q[:, 1:] = q[0, 1:]
     if mode == 'swivel':
         q[:, 0] = float(dataset.get('initial_roll_rad', q[0, 0]))
+    home_hold = float(dataset.get('home_hold_s', 0.))
+    if not np.isfinite(home_hold) or home_hold < 0 or home_hold >= times[-1]-times[0]:
+        raise ValueError('home_hold_s must be nonnegative and shorter than the clip')
+    home_frames = times-times[0] <= home_hold
+    q[home_frames] = q[0]
     source = dataset['observations']
     obs = {}
     for key in ('camera', 'shell', 'frame', 'track'):
@@ -117,6 +124,7 @@ def _prepare(dataset, cameras, F, pivot, radius, gap, red_sign, min_track_frames
                                               q[f], h, radius, gap, red_sign))
         signs.append(red_sign * (1 - 2 * h))
     return {'obs': obs, 'q0': q, 'times': times, 'mode': mode,
+            'home_frames': home_frames,
             'polar0': points_to_polar(local), 'signs': np.asarray(signs),
             'original_size': m, 'kept_indices': np.flatnonzero(keep)}
 
@@ -129,7 +137,9 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
     datasets: [{times:(T,), initial_angles:(T,3), mode, observations:{camera,
       shell (0=red,1=green), frame, track, uv (N,2), weight (optional)}}].
     Every clip's first angles are a known pose, not an arbitrary optimizer guess.
-    Tracks need >=3 frames and a temporal path to frame 0 for valid output.
+    Optional dataset home_hold_s declares a stationary interval at that pose;
+    callers must verify it against the images (workflow.check_home_hold does so).
+    Tracks need >=3 frames and a path to an observed home frame for valid output.
     Axis calibration additionally requires home-start roll AND swivel clips.
     All returned angles are radians. Unsupported estimates are NaN. Callers must
     check success before persisting F/pivot as a usable calibration.
@@ -222,7 +232,7 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
         valid = _support(d, np.ones(len(d['obs']['frame']), bool),
                          cfg['min_points_per_frame'], cfg['min_track_frames'])
         active = valid.copy()
-        active[0] = False  # fixed known home resolves all angle/landmark gauges
+        active[d['home_frames']] = False  # all declared home poses are fixed
         if d['mode'] == 'roll':
             active[:, 1:] = False
         elif d['mode'] == 'swivel':
@@ -367,9 +377,18 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
             aggregate['observations'] += s['observations']
             aggregate['inliers'] += s['inliers']
             aggregate['squared_error'] += float((norms[included] ** 2).sum())
+        support_diagnostics = []
+        for component, label in enumerate(('roll', 'red', 'green')):
+            supported = valid[:, component]
+            support_diagnostics.append({
+                'component': label, 'declared_home_frames': int(d['home_frames'].sum()),
+                'supported_home_frames': int((supported & d['home_frames']).sum()),
+                'supported_frames': int(supported.sum()),
+                'last_supported_time_s': float(d['times'][supported][-1]) if supported.any() else None,
+                'supported_excursion_deg': float(np.degrees(np.ptp(q[supported, component]))) if supported.any() else None})
         outputs.append({'times': d['times'], 'angles': q, 'valid': valid,
                         'mode': d['mode'], 'observation_inlier': original_inlier,
-                        'per_camera': stats})
+                        'per_camera': stats, 'support_diagnostics': support_diagnostics})
     for ci, s in camera_stats.items():
         s['inlier_fraction'] = s['inliers'] / max(s['observations'], 1)
         s['inlier_rmse_px'] = np.sqrt(s.pop('squared_error') / s['inliers']) if s['inliers'] else None

@@ -18,11 +18,13 @@ def main(argv=None):
     parser.add_argument("--max-frames", type=int, default=180, help="Maximum paired frames per clip, starting at home")
     parser.add_argument("--roll-sign", type=int, choices=(-1, 1), default=1)
     parser.add_argument("--swivel-sign", type=int, choices=(-1, 1), default=1)
+    parser.add_argument("--home-hold-s", type=float, default=0.,
+                        help="Declared stationary home duration from first paired frame; checked in pixels, then fixed at zero in the fit")
     args = parser.parse_args(argv)
     try:
         report = calibrate_axes(args.config, args.roll, args.swivel, args.output,
                                 max_frames=args.max_frames, roll_sign=args.roll_sign,
-                                swivel_sign=args.swivel_sign)
+                                swivel_sign=args.swivel_sign, home_hold_s=args.home_hold_s)
     except (OSError, ValueError) as exc:
         print(f"Axis calibration failed: {exc}", file=sys.stderr)
         return 2

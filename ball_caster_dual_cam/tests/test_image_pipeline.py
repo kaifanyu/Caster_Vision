@@ -17,6 +17,8 @@ from dualcam.model import project, rotation_z, world_points
 from dualcam.solver import fit_joint
 from dualcam.tracking import (initialize_angles, initialize_axes, initialize_pivot,
                               track_session)
+from ballrot.estimate import solve_hemisphere_increment
+from types import SimpleNamespace
 
 
 NAMES = ("c920", "brio101")
@@ -138,6 +140,25 @@ def render_calibration_sessions(root):
 
 
 class ImageAxisCalibrationTests(unittest.TestCase):
+    def test_missing_native_rotation_invalidates_composed_interval(self):
+        cv2.setNumThreads(1)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cfg, _, _, _ = render_calibration_sessions(root)
+            with (root/'roll/brio101_timestamps.csv').open('w', newline='') as stream:
+                table = csv.writer(stream)
+                table.writerow(['frame_index', 'timestamp_s'])
+                table.writerows((i, i/30+(.015 if 1 <= i <= 8 else 0)) for i in range(14))
+            def missing_step(*args, **kwargs):
+                if kwargs['rng'] == 11:  # native source frame 4, inside the pairing hole
+                    return SimpleNamespace(success=False)
+                return solve_hemisphere_increment(*args, **kwargs)
+            with patch('dualcam.tracking.solve_hemisphere_increment', side_effect=missing_step):
+                tracked = track_session(root/'roll', cfg, progress=None)
+            self.assertTrue(np.isnan(tracked['increments'][:, :, 0]).all())
+            self.assertTrue(np.isfinite(tracked['increments'][:, :, 1]).all())
+            self.assertTrue((tracked['increment_support'][:, :, 0] == 0).all())
+
     def test_unpaired_images_preserve_tracks_and_paired_rotation_interval(self):
         cv2.setNumThreads(1)
         with tempfile.TemporaryDirectory() as temporary:

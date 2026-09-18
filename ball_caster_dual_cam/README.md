@@ -14,6 +14,8 @@ calibration and measured camera timing are still pending. The supplied 100 mm
 shell radius and 20 mm gap come from the original project's configuration;
 verify these physical dimensions on your rig. See the
 [current calibration results and next steps](docs/KALIBR_NEXT_STEPS.md).
+For the shared-light timing measurement, new 12-second capture sequence and
+stationary-home solver option, follow [timing and home calibration](docs/TIMING_AND_HOME.md).
 
 ## Files you edit
 

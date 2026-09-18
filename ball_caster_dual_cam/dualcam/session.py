@@ -88,6 +88,11 @@ def load_session(path, cfg, *, max_frames=None, check_profile=True):
     return {"path": directory, "metadata": metadata, "pairs": pairs,
             "times": times-times[0], "skew_s": skew,
             "report": {"paired_frames": len(pairs), "source_frames": [len(t) for t in raw],
+                       "max_pair_interval_s": float(np.max(np.diff(times))),
+                       "pair_gaps_over_100ms": [{"from_s": float(times[i]-times[0]),
+                                                "to_s": float(times[i+1]-times[0]),
+                                                "duration_s": float(times[i+1]-times[i])}
+                                               for i in np.flatnonzero(np.diff(times) > .1001)],
                        "max_pair_skew_ms": float(1000*np.max(np.abs(skew))),
                        "median_pair_skew_ms": float(1000*np.median(np.abs(skew))),
                        "brio_offset_s": timing.get("brio_offset_s", 0.),

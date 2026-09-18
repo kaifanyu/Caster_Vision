@@ -22,7 +22,7 @@ cameras:
       saturation: 128
       sharpness: 128
       backlight_compensation: 0
-    circle: [992, 550, 460]   # Reviewed in undistorted pixels for this fixed camera mount
+    circle: [958.619658813961, 526.1027624973835, 446.7577766851045]   # Reviewed in undistorted pixels for this fixed camera mount
     segment:
       red_hsv: {lo: [170, 130, 60], hi: [12, 255, 255]}
       green_hsv: {lo: [40, 70, 30], hi: [100, 255, 255]}
@@ -48,7 +48,7 @@ cameras:
       sharpness: 128
       backlight_compensation: 0
       # Brio 101 is FIXED FOCUS. No focus control belongs here.
-    circle: [850, 550, 520]   # Reviewed in undistorted pixels for this fixed camera mount
+    circle: [880.0675591428536, 576.6465342509202, 519.8996895141972]   # Reviewed in undistorted pixels for this fixed camera mount
     segment:
       red_hsv: {lo: [170, 110, 50], hi: [12, 255, 255]}
       green_hsv: {lo: [40, 120, 30], hi: [100, 255, 255]}
