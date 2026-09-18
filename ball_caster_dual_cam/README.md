@@ -265,6 +265,14 @@ The tool saves `report.json`, `roll_tracks.npz`, and `swivel_tracks.npz`. It wri
 axis-rank, visibility, surface-spread, residual, and support checks. Rejected fits
 return exit code 2 and preserve an earlier accepted axes file.
 
+For an anchored fit that stalls, optional `--surface-refinement-passes 2` fits
+each surface track independently before each of two joint solves. Use
+`--max-nfev 250` to set the budget explicitly for each joint solve. The report
+records stage costs, convergence and total joint evaluations. This keeps the
+original quality gates and observations; it does not guarantee acceptance.
+See [the staged-refinement and HSV guide](docs/TIMING_AND_HOME.md#4-refine-surface-points-before-joint-calibration)
+for a complete command and mask-inspection instructions.
+
 After a successful axis fit, replay the pure-roll recording itself with all three
 angles free to check for unwanted estimated shell spin:
 
@@ -299,7 +307,20 @@ the first paired image. Missing estimates are blank/null, never held measurement
 Overlays draw the calibrated roll and moving swivel axes on both views; missing
 roll is labeled unresolved. Playback uses median FPS; CSV times remain authoritative.
 
-The initial implementation is an **offline batch estimator**, defaulting to the
+For arbitrary-motion tracking with native frames, keyframe recovery and one
+shared two-camera Kalman trajectory, see [FUSED_MOTION.md](docs/FUSED_MOTION.md).
+The new `scripts/track_motion.py` supports recorded sessions or two MP4/AVI files
+with their original timestamp CSVs; its approximate rotation source is reported
+separately from acceptance by the metric batch solver.
+
+Export that saved shared trajectory as a portable interactive 3D replay with
+`scripts/visualize_motion.py --results out/run2_fused_03/results.json --output out/run2_fused_03/orientation_3d.html`.
+Open the HTML to play, scrub, orbit, and zoom one caster frame and its independent
+shell spins. No tracking rerun or extra packages are needed. Unresolved motion
+remains hidden; the replay does not fill gaps or improve accuracy. See
+[3D viewer usage](docs/FUSED_MOTION.md#interactive-3d-orientation).
+
+The original `scripts/run.py` is an **offline batch estimator**, defaulting to the
 first **180 paired frames per clip**. `--max-frames N` increases this explicitly;
 computation and memory grow with tracks and frames. It does not implement the old
 project's long-clip keyframe relocalization, overlapping-window recovery, or a ROS

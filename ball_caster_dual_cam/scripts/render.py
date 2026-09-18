@@ -24,6 +24,11 @@ def main():
     cfg = load_config(args.config)
     cameras, intrinsics, _ = load_rig(cfg)
     result = json.loads(args.results.read_text())
+    if result.get('kind') == 'fused_motion':
+        from dualcam.fused_workflow import render_fused
+        render_fused(result, cfg, args.output)
+        print(f'Saved shared-state overlays to {args.output}')
+        return 0
     from dualcam.workflow import calibration_matches
     if not calibration_matches(cfg, result.get("calibration_hashes")):
         raise ValueError("Results refer to different intrinsics/stereo; use the original calibration files")

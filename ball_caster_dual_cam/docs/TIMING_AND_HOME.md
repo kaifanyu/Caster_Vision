@@ -143,6 +143,49 @@ requires convergence, >=70% accepted observations per camera, <=2 px inlier RMSE
 >=15 degrees of supported axis excursion, and sufficient axis rank. The changes
 do not weaken these gates or guarantee that an old recording will pass.
 
+## 4. Refine surface points before joint calibration
+
+When an anchored fit stalls, try staged surface-point refinement on the same
+recordings. It uses every observation of each track to fit that point's position
+on its signed hemisphere, while holding axes, pivot and frame angles fixed. The
+next joint solve then updates all of those quantities together. Two passes repeat
+this sequence twice. Point updates must not increase the original robust loss;
+the method retains the original observations, weights and acceptance thresholds.
+
+```bash
+python3 scripts/calibrate_axes.py \
+  --roll data/roll5 --swivel data/swivel3 \
+  --home-hold-s 2.5 --max-frames 400 \
+  --surface-refinement-passes 2 --max-nfev 250 \
+  --output out/axes_surface_refined_01
+```
+
+`--max-nfev` now explicitly overrides the YAML budget for **each joint solve**.
+Two passes with 250 allow up to 500 joint evaluations, plus separate small point
+fits. `report.json` records the effective options, each stage's objective and
+convergence, and total joint evaluations. `surface_refinement_max_nfev` in the
+solver config limits each point fit (default 100); no config edit is necessary
+for the example. Staging defaults to zero, preserving the original single solve
+unless requested. A converged point fit does not count as joint convergence.
+
+HSV thresholds control which image regions supply tracks. They do not specify
+the points' 3D positions and do not fix timing or camera geometry. Do not change
+HSV during a solver comparison. Inspect existing clips first, for example:
+
+```bash
+python3 scripts/preview.py --session data/roll5 --camera brio101 \
+  --frame 150 --output out/brio_roll_mask.png
+```
+
+Inspect both cameras at home, during motion and at the endpoint. Adjust that
+camera's `segment.red_hsv` / `segment.green_hsv` in `config/rig.yaml` only if the
+preview misses real painted markings or includes wrongly colored surfaces.
+Preserve the physical red/green identities when a camera is upside down. HSV
+alone cannot distinguish a painted rim from a curved shell of the same color.
+After a mask change, rerun tracking from the videos into a fresh output directory;
+previously saved tracks do not reflect changed HSV settings. `preview.py` saves a
+diagnostic image; it is not an interactive HSV labeling tool.
+
 ## Validation on the previous swivel clip
 
 With the original circle settings, composing native increments restored valid

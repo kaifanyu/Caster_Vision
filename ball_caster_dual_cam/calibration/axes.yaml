@@ -1,0 +1,40 @@
+calibration_kind: dual_camera_axes
+created_utc: '2026-09-18T02:25:34.995829+00:00'
+R_bc:
+- - 0.041338446721996415
+  - -0.9989814386525413
+  - -0.0180891694201742
+- - -0.1973119987423308
+  - -0.025910317730629556
+  - 0.9799982809104333
+- - -0.9794687886680816
+  - -0.0369423965491808
+  - -0.19818211665607968
+pivot_c920_m:
+- 0.003073194937685677
+- -0.009735489691003128
+- 0.35660724706504743
+radius_m: 0.1
+gap_m: 0.02
+red_shell_sign: 1
+calibration_hashes:
+  c920: 8e1993b2b7c6ddd79521b732932c8922014d789b37496ad61fae9512b32c48a4
+  brio101: 614dc68aa8c127b1e39ba5aabcceccc0802dc7c1fce25fca5663db6713c1ec84
+  stereo: fce08e8a6daa752a669da96d2865ccb24d8d304d90fbd7fb1167259b21d3aaea
+timing:
+  brio_offset_s: 0.0
+  max_pair_skew_ms: 12.0
+  verified: false
+home_reference:
+  description: Both clips start at the same known caster home; angles at each clip's
+    first paired frame are [0,0,0].
+  roll_session: /home/fishros/Caster_Vision/ball_caster_dual_cam/data/roll32
+  swivel_session: /home/fishros/Caster_Vision/ball_caster_dual_cam/data/swivel3
+  frame0_angles_rad:
+  - 0.0
+  - 0.0
+  - 0.0
+  home_hold_s: 2.5
+  roll_sign: 1
+  swivel_sign: 1
+diagnostics_report: /home/fishros/Caster_Vision/ball_caster_dual_cam/out/axes_surface_refined_01/report.json

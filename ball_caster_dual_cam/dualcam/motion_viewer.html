@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared caster orientation · 3D</title>
+<style>
+  :root{color-scheme:dark;--bg:#0b1018;--panel:#141d29;--border:#293546;--text:#edf3fa;--muted:#a3b3c7;--cyan:#68d8ed;--amber:#ffc66d;--dim:#576374;--red:#f17b86;--green:#66d09a}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  main{max-width:1440px;margin:0 auto;padding:28px 32px 32px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:18px}
+  h1{font-size:27px;letter-spacing:-.5px;margin:0;font-weight:650}p{margin:5px 0;color:var(--muted)}.eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;color:var(--cyan);margin-bottom:5px}
+  .sources{display:flex;gap:8px;flex-wrap:wrap}.source{border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--muted)}.source b{color:var(--text);font-weight:500}
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:16px}.scene-wrap{position:relative;min-height:440px;height:58vh;max-height:700px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#192432 0,#0c131d 75%)}
+  #scene{display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}#scene:active{cursor:grabbing}.scene-top{position:absolute;top:16px;left:18px;right:18px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;gap:10px}
+  .pill{display:inline-block;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:650;background:#132e38;color:var(--cyan);border:1px solid #285466}.pill.predicted{background:#342a1a;border-color:#766039;color:var(--amber)}.pill.unresolved{background:#242832;border-color:#536072;color:#c1cbda}.pill.home{background:#172d30;color:#a6e0cc;border-color:#2a5551}
+  #event{font-size:12px;color:var(--muted);text-align:right}.scene-bottom{position:absolute;bottom:14px;left:18px;right:18px;display:flex;justify-content:space-between;align-items:end;gap:15px;pointer-events:none;font-size:11px;color:#8e9fb3}
+  #missing{position:absolute;top:43%;left:10%;width:80%;text-align:center;pointer-events:none;padding:14px;border-radius:12px;background:#0c131ddc;display:none}#missing strong{display:block;font-size:22px;font-weight:600;color:#d3dce8}#missing p{font-size:13px;max-width:410px;margin:6px auto}
+  .side{display:flex;flex-direction:column;gap:10px}.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}.card-head{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}.tag{font-size:10px;border-radius:4px;padding:2px 6px;color:var(--cyan);background:#16343e}.tag.predicted{color:var(--amber);background:#392e1c}.tag.unresolved{color:#bac5d5;background:#2a3443}.tag.home{color:#a6e0cc;background:#213a37}
+  .value{font-size:29px;font-weight:580;letter-spacing:-.7px;font-variant-numeric:tabular-nums;margin:3px 0}.detail{font-size:11px;line-height:1.6;color:var(--muted);min-height:34px}.card.red{border-left:3px solid var(--red)}.card.green{border-left:3px solid var(--green)}.card.roll{border-left:3px solid var(--cyan)}
+  .options{padding:12px 15px}.options label{display:flex;gap:9px;align-items:center;font-size:12px;color:var(--muted);margin:7px 0}.options input{accent-color:var(--cyan)}select,button{font:inherit;color:var(--text);background:#1c2938;border:1px solid #3a4b61;border-radius:7px;padding:7px 11px}button{cursor:pointer;font-size:13px}button:hover{background:#2a3a4d}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}.primary{color:#0b1720;background:var(--cyan);border-color:var(--cyan);font-weight:650;min-width:83px}.primary:hover{background:#9ce7f4}.options select{width:100%;font-size:12px;padding:7px}
+  .timeline-panel{margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px 18px}.transport{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.stamp{font-size:15px;font-variant-numeric:tabular-nums;margin-left:auto;color:#e0eaf4}.stamp span{color:var(--muted);font-size:12px}.speed{font-size:12px;display:flex;gap:6px;align-items:center;color:var(--muted)}.speed select{padding:6px 7px;font-size:12px}
+  #time{width:100%;height:24px;accent-color:var(--cyan);margin:12px 0 6px;cursor:pointer}.coverage{display:grid;grid-template-columns:65px 1fr;gap:12px}.row-labels{display:flex;flex-direction:column;font-size:11px;color:var(--muted);height:72px;justify-content:space-around}#coverage{width:100%;height:90px;display:block;cursor:crosshair}.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:8px 0 0}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}.help{font-size:12px;max-width:1000px;margin-top:14px;line-height:1.7}.help strong{font-weight:600;color:#c8d4e3}details{margin-top:12px;color:var(--muted);font-size:12px}summary{cursor:pointer}#provenance{overflow-wrap:anywhere;font-size:11px}#turns{color:var(--amber)}
+  @media(max-width:850px){main{padding:18px 14px}.layout{grid-template-columns:1fr}.scene-wrap{height:52vh;min-height:340px}.side{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.options{grid-column:1/-1;display:flex;gap:16px;flex-wrap:wrap;align-items:center}.options select{width:200px}.options label{margin:0}.card{padding:11px}.value{font-size:24px}.detail{font-size:10px}header{align-items:flex-start}.sources{justify-content:flex-end}.stamp{margin-left:0}.transport{gap:7px}}
+  @media(max-width:480px){h1{font-size:22px}.sources{display:none}.side{grid-template-columns:1fr}.card{display:grid;grid-template-columns:1fr auto;gap:5px 12px}.card-head{grid-column:1/-1}.detail{max-width:170px}.scene-wrap{min-height:310px}.options{display:block}.options label{margin:8px 0}.options select{width:100%}.transport button{font-size:12px;padding:7px 9px}}
+</style>
+</head>
+<body>
+<main>
+  <header><div><div class="eyebrow">C920 + BRIO101 · ONE FUSED TRAJECTORY</div><h1>Shared caster orientation</h1><p>Interactive 3D reconstruction from the saved calculation</p></div><div class="sources"><span class="source"><b>C920</b> <span id="c920-count"></span></span><span class="source"><b>Brio101</b> <span id="brio-count"></span></span></div></header>
+  <div class="layout">
+    <div class="scene-wrap">
+      <canvas id="scene" tabindex="0" aria-label="Interactive three dimensional caster orientation. Drag to orbit, scroll to zoom. Playback is controlled below."></canvas>
+      <div class="scene-top"><span id="state" class="pill">Starting reference</span><span id="event"></span></div>
+      <div id="missing"><strong>Orientation unresolved</strong><p>No current roll estimate. Moving axes and shells are hidden; the calibrated reference remains visible.</p></div>
+      <div class="scene-bottom"><span>Drag to orbit · scroll to zoom · double-click to reset</span><span id="space-label">Calibrated home frame</span></div>
+    </div>
+    <aside class="side" aria-label="Orientation values">
+      <div class="card roll"><div class="card-head"><span>ROLL · SHARED</span><span id="tag-0" class="tag"></span></div><div id="angle-0" class="value">—</div><div id="detail-0" class="detail"></div></div>
+      <div class="card red"><div class="card-head"><span>RED SHELL SPIN</span><span id="tag-1" class="tag"></span></div><div id="angle-1" class="value">—</div><div id="detail-1" class="detail"></div></div>
+      <div class="card green"><div class="card-head"><span>GREEN SHELL SPIN</span><span id="tag-2" class="tag"></span></div><div id="angle-2" class="value">—</div><div id="detail-2" class="detail"></div></div>
+      <div class="card options">
+        <label><input type="checkbox" id="shells" checked> Show shell model</label>
+        <label><input type="checkbox" id="reference" checked> Show home reference</label>
+        <label><input type="checkbox" id="trail"> Show recent swivel-axis path</label>
+        <label for="space">Coordinates</label><select id="space"><option value="home">Calibrated home frame</option><option value="camera">C920 camera frame</option></select>
+      </div>
+    </aside>
+  </div>
+  <section class="timeline-panel" aria-label="Playback and tracking coverage">
+    <div class="transport"><button id="play" class="primary">▶ Play</button><button id="previous" title="Previous saved event">← Event</button><button id="next" title="Next saved event">Event →</button><button id="next-supported">Next image update</button><button id="reset">Reset view</button><label class="speed">Speed <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><div class="stamp"><b id="clock"></b> <span id="duration"></span></div></div>
+    <input id="time" type="range" min="0" max="1" step="0.001" value="0" aria-label="Trajectory playback time in seconds">
+    <div class="coverage"><div class="row-labels"><span>Roll</span><span>Red spin</span><span>Green spin</span></div><canvas id="coverage" aria-label="Tracking status over the full recording. Click to seek."></canvas></div>
+    <div class="legend"><span><i class="dot" style="background:#68d8ed"></i>Image-supported</span><span><i class="dot" style="background:#ffc66d"></i>Predicted</span><span><i class="dot" style="background:#3f4c5e"></i>Unresolved</span><span><i class="dot" style="background:#a6e0cc"></i>Starting reference</span></div>
+  </section>
+  <p class="help"><strong>Axes:</strong> cyan X is the fixed roll axis; yellow Z is the moving swivel axis; purple Y completes the caster frame. Dashed orange moving axes indicate prediction. Shell lines and dots show simulated material orientation; they are not reconstructed paint. If a shell’s spin is unresolved, only its rotationally symmetric outline is shown.</p>
+  <p id="turns" class="help"></p><p id="method" class="help"></p>
+  <details><summary>Reference, geometry and source</summary><p id="geometry"></p><p id="provenance"></p><p id="notes"></p></details>
+</main>
+<script>
+'use strict';
+const DATA=__MOTION_DATA__;
+const frames=DATA.frames, first=frames[0].time_s, last=frames[frames.length-1].time_s, span=Math.max(last-first,1e-6);
+const $=id=>document.getElementById(id), canvas=$('scene'), ctx=canvas.getContext('2d'), covCanvas=$('coverage'), cov=covCanvas.getContext('2d');
+const COLOR={x:'#68d8ed',y:'#b8a6ff',z:'#ffd06f',red:'#f17b86',green:'#66d09a',vision:'#68d8ed',predicted:'#ffc66d',unresolved:'#3f4c5e',home:'#a6e0cc'};
+const STATE={vision:'Image-supported',predicted:'Predicted',unresolved:'Unresolved',home:'Starting reference'};
+let index=0,targetTime=first,playing=false,baseTime=first,baseWall=0,raf=0;
+let azimuth=-Math.PI*.31,elevation=.48,distance=4.6,zoom=1,drag=null,sceneWidth=800,sceneHeight=550,coverageWidth=800;
+let projection=null,lastScene={};
+const add=(a,b)=>a.map((v,i)=>v+b[i]), mul=(a,s)=>a.map(v=>v*s), dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0), cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], unit=a=>mul(a,1/Math.hypot(...a));
+function matVec(M,p){return M.map(row=>dot(row,p));}
+function rx(a,p){const c=Math.cos(a),s=Math.sin(a);return[p[0],c*p[1]-s*p[2],s*p[1]+c*p[2]];}
+function rz(a,p){const c=Math.cos(a),s=Math.sin(a);return[c*p[0]-s*p[1],s*p[0]+c*p[1],p[2]];}
+function world(p){return $('space').value==='camera'?matVec(DATA.F,p):p;}
+function basis(){const eye=[Math.cos(elevation)*Math.cos(azimuth),Math.cos(elevation)*Math.sin(azimuth),Math.sin(elevation)];const forward=mul(eye,-1),right=unit(cross(forward,[0,0,1])),up=cross(right,forward);return{eye,right,up};}
+function project(p){const depth=distance-dot(p,projection.eye),focal=Math.min(sceneWidth,sceneHeight)*1.24*zoom;return[sceneWidth*.5+focal*dot(p,projection.right)/depth,sceneHeight*.5-focal*dot(p,projection.up)/depth,depth];}
+function line(points,color,width=1,dash=[],alpha=1){if(points.length<2)return;ctx.beginPath();points.forEach((p,i)=>{const q=project(p);if(i===0)ctx.moveTo(q[0],q[1]);else ctx.lineTo(q[0],q[1]);});ctx.strokeStyle=color;ctx.lineWidth=width;ctx.globalAlpha=alpha;ctx.setLineDash(dash);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}
+function textAt(point,text,color,size=13,offset=[8,-6]){const p=project(point);ctx.font=`600 ${size}px system-ui`;ctx.lineWidth=4;ctx.strokeStyle='#0e1723';ctx.strokeText(text,p[0]+offset[0],p[1]+offset[1]);ctx.fillStyle=color;ctx.fillText(text,p[0]+offset[0],p[1]+offset[1]);}
+function arrow(direction,color,label,predicted=false){const end=mul(direction,1.72),a=project([0,0,0]),b=project(end);line([mul(direction,-1.3),end],color,2.7,predicted?[8,6]:[]);const d=unit([b[0]-a[0],b[1]-a[1],0]);const side=[-d[1],d[0]];ctx.beginPath();ctx.moveTo(b[0],b[1]);ctx.lineTo(b[0]-d[0]*12+side[0]*5,b[1]-d[1]*12+side[1]*5);ctx.moveTo(b[0],b[1]);ctx.lineTo(b[0]-d[0]*12-side[0]*5,b[1]-d[1]*12-side[1]*5);ctx.strokeStyle=color;ctx.lineWidth=2.4;ctx.stroke();textAt(end,label,color);}
+function effective(){const f=frames[index],gap=targetTime-f.time_s>.1000001;const status=gap?['unresolved','unresolved','unresolved']:f.status;const angles=f.angles.map((v,i)=>status[i]==='unresolved'?null:v);return{f,gap,status,angles};}
+function shellPoint(theta,phi,sign,roll,spin){const p=[Math.sin(theta)*Math.cos(phi),Math.sin(theta)*Math.sin(phi),sign*Math.cos(theta)];let v=rz(spin,p);v[2]+=sign*DATA.gap_m/(2*DATA.radius_m);return world(rx(roll,v));}
+function scene(){const {f,status,angles}=effective();ctx.clearRect(0,0,sceneWidth,sceneHeight);projection=basis();const rollKnown=angles[0]!==null;const sign=DATA.red_shell_sign;
+  // The home grid is a reference plane through the fixed pivot, not a floor.
+  if($('reference').checked){for(let k=-4;k<=4;k++){const v=k*.4;line([world([-1.6,v,0]),world([1.6,v,0])],'#35445a',1,[],.35);line([world([v,-1.6,0]),world([v,1.6,0])],'#35445a',1,[],.35);}for(let j=1;j<3;j++){const p=[0,0,0];p[j]=1.45;line([world(mul(p,-1)),world(p)],'#8898ad',1,[3,6],.5);textAt(world(p),j===1?'Y₀':'Z₀','#8392a6',11);}}
+  const triangles=[];
+  if(rollKnown && $('shells').checked){for(let h=0;h<2;h++){const shellSign=h===0?sign:-sign,spinKnown=angles[h+1]!==null,beta=spinKnown?angles[h+1]:0;const predicted=status[0]==='predicted'||status[h+1]==='predicted';const steps=12,sectors=28;
+    for(let j=0;j<steps;j++)for(let k=0;k<sectors;k++){const a=j/steps*Math.PI/2,b=(j+1)/steps*Math.PI/2,c=k/sectors*2*Math.PI,d=(k+1)/sectors*2*Math.PI;const p=[shellPoint(a,c,shellSign,angles[0],beta),shellPoint(b,c,shellSign,angles[0],beta),shellPoint(b,d,shellSign,angles[0],beta),shellPoint(a,d,shellSign,angles[0],beta)];for(const ids of [[0,1,2],[0,2,3]]){const v=ids.map(i=>p[i]),normal=unit(cross(add(v[1],mul(v[0],-1)),add(v[2],mul(v[0],-1))));if(!normal.every(Number.isFinite))continue;const shade=.3+.5*Math.abs(dot(normal,unit([-.3,-.5,1])));triangles.push({v,color:h===0?[241,123,134]:[102,208,154],shade,alpha:spinKnown?(predicted?.19:.25):.075,depth:v.reduce((s,x)=>s+project(x)[2],0)/3});}}
+  }triangles.sort((a,b)=>b.depth-a.depth);for(const tri of triangles){ctx.beginPath();tri.v.forEach((v,j)=>{const p=project(v);if(j===0)ctx.moveTo(p[0],p[1]);else ctx.lineTo(p[0],p[1]);});ctx.closePath();ctx.fillStyle=`rgba(${tri.color.map(v=>Math.round(v*tri.shade)).join(',')},${tri.alpha})`;ctx.fill();}
+    for(let h=0;h<2;h++){const shellSign=h===0?sign:-sign,known=angles[h+1]!==null,beta=known?angles[h+1]:0,color=h===0?COLOR.red:COLOR.green,predicted=status[0]==='predicted'||status[h+1]==='predicted',dash=predicted?[5,5]:[];
+      for(const theta of [Math.PI/6,Math.PI/3,Math.PI/2]){const curve=Array.from({length:61},(_,i)=>shellPoint(theta,i/60*Math.PI*2,shellSign,angles[0],beta));line(curve,color,theta===Math.PI/2?1.8:.8,dash,known?.8:.34);}
+      if(known){for(let j=0;j<8;j++){const phi=j/8*Math.PI*2;line(Array.from({length:24},(_,i)=>shellPoint(i/23*Math.PI/2,phi,shellSign,angles[0],beta)),color,j===0?2.6:1,dash,j===0?1:.52);}const marker=shellPoint(.85,0,shellSign,angles[0],beta),p=project(marker);ctx.beginPath();ctx.arc(p[0],p[1],5,0,2*Math.PI);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#0b1018';ctx.lineWidth=1.5;ctx.stroke();}
+    }
+  }
+  if($('trail').checked && rollKnown){let previous=null;const begin=Math.max(first,f.time_s-2);for(let i=index;i>=0&&frames[i].time_s>=begin;i--){const item=frames[i];if(item.status[0]==='unresolved'||item.angles[0]===null){previous=null;continue;}const p=world(rx(item.angles[0],[0,0,1.45]));if(previous&&previous.t-item.time_s<=.1){line([p,previous.p],item.status[0]==='predicted'?COLOR.predicted:COLOR.z,1.2,[],.4);}previous={p,t:item.time_s};}}
+  arrow(world([1,0,0]),COLOR.x,'X · roll');
+  if(rollKnown){const predicted=status[0]==='predicted';arrow(world(rx(angles[0],[0,1,0])),predicted?COLOR.predicted:COLOR.y,'Y',predicted);arrow(world(rx(angles[0],[0,0,1])),predicted?COLOR.predicted:COLOR.z,'Z · swivel',predicted);}
+  const origin=project([0,0,0]);ctx.beginPath();ctx.arc(origin[0],origin[1],3,0,2*Math.PI);ctx.fillStyle='#dce5f0';ctx.fill();
+  lastScene={rollVisible:rollKnown,redSpinVisible:rollKnown&&angles[1]!==null&&$('shells').checked,greenSpinVisible:rollKnown&&angles[2]!==null&&$('shells').checked,movingAxisCount:rollKnown?2:0};
+}
+function coverage(){cov.clearRect(0,0,coverageWidth,90);const rowHeight=16,step=24;for(let component=0;component<3;component++){cov.fillStyle=COLOR.unresolved;cov.fillRect(0,component*step+4,coverageWidth,rowHeight);for(let i=0;i<frames.length;i++){const start=(frames[i].time_s-first)/span*coverageWidth,end=((i+1<frames.length?frames[i+1].time_s:last)-first)/span*coverageWidth;if(end-start<=0)continue;cov.fillStyle=COLOR[frames[i].status[component]];const maxWidth=Math.min(end-start,.1/span*coverageWidth);cov.fillRect(start,component*step+4,maxWidth,rowHeight);}}cov.font='10px system-ui';cov.fillStyle='#94a5bb';for(let j=0;j<=6;j++){const x=j/6*coverageWidth;cov.textAlign=j===0?'left':j===6?'right':'center';cov.fillText((first+j/6*span).toFixed(1)+' s',x,88);}const x=(targetTime-first)/span*coverageWidth;cov.beginPath();cov.moveTo(x,0);cov.lineTo(x,73);cov.strokeStyle='#edf3fa';cov.lineWidth=1.6;cov.stroke();}
+function draw(){const {f,gap,status,angles}=effective();$('time').value=targetTime;$('clock').textContent=targetTime.toFixed(3)+' s';$('duration').textContent='/ '+last.toFixed(3)+' s';$('state').className='pill '+status[0];$('state').textContent=gap?'No recorded sample':STATE[status[0]];$('event').textContent=`Saved event ${index+1} / ${frames.length} · ${f.camera==='c920'?'C920':'Brio101'} #${f.source_frame}`;$('missing').style.display=status[0]==='unresolved'?'block':'none';$('space-label').textContent=$('space').value==='home'?'Calibrated home frame · centered on pivot':'C920 coordinates · centered on pivot';
+  for(let i=0;i<3;i++){const tag=$('tag-'+i);tag.textContent=status[i]==='vision'?'IMAGE':status[i].toUpperCase();tag.className='tag '+status[i];let detail='No supported estimate at this time';if(angles[i]!==null){let degrees=angles[i]*180/Math.PI;const turns=f.turn_count_valid[i];if(!turns)degrees=((degrees%360)+360)%360;$('angle-'+i).textContent=degrees.toFixed(2)+'°';detail=(turns?'Relative to starting reference':'Modulo 360° · turns unverified');if(f.std_rad[i]!==null)detail+='\nConditional σ '+(f.std_rad[i]*180/Math.PI).toFixed(2)+'°';}else{$('angle-'+i).textContent='—';}const el=$('detail-'+i);el.textContent=detail;el.style.whiteSpace='pre-line';}
+  const missingTurns=['roll','red spin','green spin'].filter((_,i)=>!f.turn_count_valid[i]);$('turns').textContent=missingTurns.length?'Whole-turn count unverified for '+missingTurns.join(', ')+'. Visible orientations after a gap do not establish missed revolutions.':'';
+  scene();coverage();
+}
+function indexAt(time){let lo=0,hi=frames.length;while(lo<hi){const mid=(lo+hi)>>1;if(frames[mid].time_s<=time)lo=mid+1;else hi=mid;}return Math.max(0,lo-1);}
+function setTime(time,keepPlaying=false){targetTime=Math.max(first,Math.min(last,Number(time)));index=indexAt(targetTime);if(!keepPlaying)pause();draw();}
+function pause(){playing=false;$('play').textContent=targetTime>=last?'↺ Replay':'▶ Play';cancelAnimationFrame(raf);}
+function tick(now){if(!playing)return;const t=baseTime+(now-baseWall)/1000*Number($('speed').value);setTime(t,true);if(t>=last){pause();return;}raf=requestAnimationFrame(tick);}
+function play(){if(playing){pause();return;}if(targetTime>=last)setTime(first);baseTime=targetTime;baseWall=performance.now();playing=true;$('play').textContent='Ⅱ Pause';raf=requestAnimationFrame(tick);}
+function stepEvent(delta){pause();index=Math.max(0,Math.min(frames.length-1,index+delta));targetTime=frames[index].time_s;draw();}
+function resetView(){azimuth=-Math.PI*.31;elevation=.48;zoom=1;draw();}
+function resize(){const dpr=Math.min(window.devicePixelRatio||1,2),box=canvas.getBoundingClientRect();sceneWidth=box.width;sceneHeight=box.height;canvas.width=Math.round(sceneWidth*dpr);canvas.height=Math.round(sceneHeight*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);coverageWidth=covCanvas.getBoundingClientRect().width;covCanvas.width=Math.round(coverageWidth*dpr);covCanvas.height=90*dpr;cov.setTransform(dpr,0,0,dpr,0,0);draw();}
+$('time').min=first;$('time').max=last;$('time').addEventListener('input',e=>setTime(e.target.value));$('play').onclick=play;$('previous').onclick=()=>stepEvent(-1);$('next').onclick=()=>stepEvent(1);$('reset').onclick=resetView;$('next-supported').onclick=()=>{const next=frames.findIndex((f,i)=>i>index&&f.status[0]==='vision');if(next>=0){pause();index=next;targetTime=frames[index].time_s;draw();}};
+$('speed').onchange=()=>{if(playing){baseTime=targetTime;baseWall=performance.now();}};for(const id of ['space','shells','reference','trail'])$(id).addEventListener('change',draw);
+canvas.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId);});canvas.addEventListener('pointermove',e=>{if(!drag)return;azimuth-=(e.clientX-drag[0])*.007;elevation=Math.max(-1.35,Math.min(1.35,elevation+(e.clientY-drag[1])*.007));drag=[e.clientX,e.clientY];scene();});canvas.addEventListener('pointerup',()=>drag=null);canvas.addEventListener('pointercancel',()=>drag=null);canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.45,Math.min(2.1,zoom*Math.exp(-e.deltaY*.001)));scene();},{passive:false});canvas.addEventListener('dblclick',resetView);
+covCanvas.addEventListener('click',e=>{const box=covCanvas.getBoundingClientRect();setTime(first+(e.clientX-box.left)/box.width*span);});document.addEventListener('keydown',e=>{if(['INPUT','SELECT','BUTTON'].includes(e.target.tagName))return;if(e.code==='Space'){e.preventDefault();play();}if(e.key==='ArrowRight'){e.preventDefault();stepEvent(1);}if(e.key==='ArrowLeft'){e.preventDefault();stepEvent(-1);}});
+for(const [id,name] of [['c920-count','c920'],['brio-count','brio101']]){const count=DATA.summary.per_camera?.[name]?.visual_updates;$(id).textContent=Number.isFinite(count)?count+' updates':'';}
+$('method').textContent=DATA.measurement_source==='rotation'?'Source: shared Kalman estimate from image rotations and keyframe tracking. This uses an approximate rotation model; a 3D replay does not independently validate angular accuracy.':'Source: shared Kalman estimate using metric landmark fits. A 3D replay does not add observations or independently validate angular accuracy.';
+$('geometry').textContent=`Shell curvature radius: ${(DATA.radius_m*1000).toFixed(1)} mm · rim gap: ${(DATA.gap_m*1000).toFixed(1)} mm · initial roll: ${DATA.initial_roll_deg.toFixed(2)}°. All motion is displayed around the fixed calibrated pivot. No position trajectory is inferred.`;
+$('provenance').textContent='Source: '+(DATA.source_results||'saved fused result');$('notes').textContent=(DATA.notes||[]).join(' ')+' Playback selects saved native events without interpolating rotations or filling unresolved intervals. During source gaps longer than 100 ms, moving geometry is hidden.';
+const requested=Number(new URLSearchParams(location.hash.slice(1)).get('t'));if(Number.isFinite(requested))targetTime=Math.max(first,Math.min(last,requested));index=indexAt(targetTime);
+window.motionViewer={seek:time=>setTime(time),step:stepEvent,resetView,getState:()=>({index,time:targetTime,sourceTime:frames[index].time_s,status:effective().status.slice(),turnCountValid:frames[index].turn_count_valid.slice(),space:$('space').value,playing,...lastScene})};
+new ResizeObserver(resize).observe(canvas.parentElement);resize();
+</script>
+</body>
+</html>

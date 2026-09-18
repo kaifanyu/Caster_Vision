@@ -14,6 +14,7 @@ from scipy.spatial.transform import Rotation
 
 from .model import (initialize_surface_point, points_to_polar, polar_to_points,
                     project, world_points)
+from .refinement import refine_surface_points
 
 
 def _components(frame, track, n, selected, min_track_frames, home_frames=None):
@@ -149,11 +150,16 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
                 'robust_px': 1.5, 'outlier_px': 5., 'max_nfev': 250,
                 'max_inlier_rmse_px': 2.5, 'min_inlier_fraction': .6,
                 'min_calibration_excursion_deg': 5., 'red_sign': 1,
-                'axis_rank_rtol': 1e-5, 'min_surface_spread': .025}
+                'axis_rank_rtol': 1e-5, 'min_surface_spread': .025,
+                'surface_refinement_passes': 0, 'surface_refinement_max_nfev': 100}
     unknown = set(options) - set(defaults) - {'verbose', 'ftol', 'xtol', 'gtol'}
     if unknown:
         raise ValueError('Unknown solver options: ' + ', '.join(sorted(unknown)))
     cfg = defaults | options
+    for key in ('max_nfev', 'surface_refinement_max_nfev', 'surface_refinement_passes'):
+        minimum = 0 if key == 'surface_refinement_passes' else 1
+        if isinstance(cfg[key], (bool, np.bool_)) or not isinstance(cfg[key], (int, np.integer)) or cfg[key] < minimum:
+            raise ValueError(f'{key} must be an integer >= {minimum}.')
     for key in ('min_track_frames', 'min_points_per_frame'):
         if not isinstance(cfg[key], (int, np.integer)) or cfg[key] < 3:
             raise ValueError(key + ' must be an integer of at least three.')
@@ -304,12 +310,34 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
     parameter_scale = np.ones(len(x0))
     if pivot_slice is not None:
         parameter_scale[pivot_slice] = .1 * radius_m
-    result = least_squares(residual, x0, bounds=(lower, upper),
-                           jac_sparsity=sparsity.tocsr(), x_scale=parameter_scale,
-                           loss='soft_l1', f_scale=cfg['robust_px'],
-                           max_nfev=cfg['max_nfev'],
-                           ftol=cfg.get('ftol', 1e-7), xtol=cfg.get('xtol', 1e-7),
-                           gtol=cfg.get('gtol', 1e-7), verbose=cfg.get('verbose', 0))
+    stages, total_nfev = [], 0
+    x = x0
+    for stage in range(max(1, cfg['surface_refinement_passes'])):
+        point_stages = []
+        if cfg['surface_refinement_passes']:
+            F, C = geometry(x)
+            for d in prepared:
+                q, _ = unpack(x, d)
+                polar, summary = refine_surface_points(
+                    d['obs'], q, x[d['point_slice']].reshape(-1, 2), d['signs'],
+                    cameras, F, C, radius_m, gap_m, red_sign,
+                    robust_px=cfg['robust_px'], max_nfev=cfg['surface_refinement_max_nfev'])
+                x[d['point_slice']] = polar.ravel()
+                point_stages.append({'mode': d['mode'], **summary})
+            print(f'Surface refinement {stage+1}/{cfg["surface_refinement_passes"]}: '
+                  f'{sum(s["improved_landmarks"] for s in point_stages)} points improved; '
+                  'refining shared geometry and motion.', flush=True)
+        result = least_squares(residual, x, bounds=(lower, upper),
+                               jac_sparsity=sparsity.tocsr(), x_scale=parameter_scale,
+                               loss='soft_l1', f_scale=cfg['robust_px'],
+                               max_nfev=cfg['max_nfev'],
+                               ftol=cfg.get('ftol', 1e-7), xtol=cfg.get('xtol', 1e-7),
+                               gtol=cfg.get('gtol', 1e-7), verbose=cfg.get('verbose', 0))
+        total_nfev += result.nfev
+        stages.append({'surface_refinement': point_stages, 'nfev': result.nfev,
+                       'cost': float(result.cost), 'optimality': float(result.optimality),
+                       'converged': bool(result.success), 'message': str(result.message)})
+        x = result.x.copy()
     F, C = geometry(result.x)
     reasons = []
     if not result.success:
@@ -439,7 +467,9 @@ def fit_joint(datasets, cameras, F_init, pivot_init, radius_m, gap_m, *,
         out['angles'] = np.where(out['valid'], out['angles'], np.nan)
     return {'success': success, 'F': F, 'pivot': C, 'datasets': outputs,
             'diagnostics': {'reasons': reasons, 'optimizer_message': result.message,
-                            'nfev': result.nfev, 'cost': float(result.cost),
+                            'nfev': total_nfev, 'cost': float(result.cost),
+                            'joint_stages': stages,
+                            'max_nfev_per_joint_stage': cfg['max_nfev'],
                             'parameter_scaling': 'angles: 1 rad; pivot: 0.1 * shell radius',
                             'optimality': float(result.optimality),
                             'per_camera': camera_stats,

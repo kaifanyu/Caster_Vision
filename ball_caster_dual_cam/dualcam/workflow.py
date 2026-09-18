@@ -101,7 +101,8 @@ def _session_info(tracked):
 
 
 def calibrate_axes(config_path, roll_session, swivel_session, output, *,
-                   max_frames=180, roll_sign=1, swivel_sign=1, home_hold_s=0.):
+                   max_frames=180, roll_sign=1, swivel_sign=1, home_hold_s=0.,
+                   max_nfev=None, surface_refinement_passes=None):
     """Jointly refine axes/pivot from separate pure-motion, known-home clips.
 
     Both recordings must begin with the caster held at the SAME known home pose.
@@ -120,6 +121,12 @@ def calibrate_axes(config_path, roll_session, swivel_session, output, *,
         if not np.isfinite(home_hold_s) or home_hold_s < 0:
             raise ValueError('home_hold_s must be finite and nonnegative')
         cfg = load_config(config_path)
+        for key, value in (('max_nfev', max_nfev), ('surface_refinement_passes', surface_refinement_passes)):
+            if value is not None:
+                minimum = 0 if key == 'surface_refinement_passes' else 1
+                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
+                    raise ValueError(f'{key} must be an integer >= {minimum}.')
+                cfg.setdefault('solver', {})[key] = value
         cameras, intrinsics, stereo = load_rig(cfg)
         _record_provenance(report, cfg, intrinsics)
         report["config"] = cfg

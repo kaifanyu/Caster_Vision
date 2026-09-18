@@ -152,12 +152,16 @@ class WorkflowTests(unittest.TestCase):
                  patch("dualcam.workflow.initialize_axes", return_value=(F, {})), \
                  patch("dualcam.workflow.initialize_pivot", return_value=pivot), \
                  patch("dualcam.workflow.fit_joint", return_value=rejected):
-                code = axes_main(["--config", str(config_path), "--roll", "roll", "--swivel", "swivel", "--output", str(root / "failed_fit")])
+                code = axes_main(["--config", str(config_path), "--roll", "roll", "--swivel", "swivel", "--output", str(root / "failed_fit"),
+                                  "--max-nfev", "321", "--surface-refinement-passes", "2"])
             self.assertEqual(code, 2)
             self.assertEqual((root / "axes.yaml").read_bytes(), before)
             report = json.loads((root / "failed_fit/report.json").read_text())
             self.assertFalse(report["success"])
             self.assertEqual(report["status"], "rejected")
+            self.assertEqual(report['config']['solver']['max_nfev'], 321)
+            self.assertEqual(report['config']['solver']['surface_refinement_passes'], 2)
+            self.assertEqual(load_config(config_path)['solver'], {})
             self.assertTrue((root / "failed_fit/roll_tracks.npz").exists())
             self.assertTrue((root / "failed_fit/swivel_tracks.npz").exists())
 

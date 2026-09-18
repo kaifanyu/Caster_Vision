@@ -20,11 +20,16 @@ def main(argv=None):
     parser.add_argument("--swivel-sign", type=int, choices=(-1, 1), default=1)
     parser.add_argument("--home-hold-s", type=float, default=0.,
                         help="Declared stationary home duration from first paired frame; checked in pixels, then fixed at zero in the fit")
+    parser.add_argument("--surface-refinement-passes", type=int,
+                        help="Refine each surface track before each joint solve; 0 uses the original single solve")
+    parser.add_argument("--max-nfev", type=int,
+                        help="Override solver.max_nfev for EACH joint solve; effective value is saved in report.json")
     args = parser.parse_args(argv)
     try:
         report = calibrate_axes(args.config, args.roll, args.swivel, args.output,
                                 max_frames=args.max_frames, roll_sign=args.roll_sign,
-                                swivel_sign=args.swivel_sign, home_hold_s=args.home_hold_s)
+                                swivel_sign=args.swivel_sign, home_hold_s=args.home_hold_s,
+                                max_nfev=args.max_nfev, surface_refinement_passes=args.surface_refinement_passes)
     except (OSError, ValueError) as exc:
         print(f"Axis calibration failed: {exc}", file=sys.stderr)
         return 2

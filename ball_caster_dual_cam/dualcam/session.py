@@ -53,7 +53,7 @@ def pair_timestamps(first, second, *, second_offset_s=0., max_skew_s=.012):
     return pairs, (first[pairs[:, 0]]+adjusted[pairs[:, 1]])/2, skew
 
 
-def load_session(path, cfg, *, max_frames=None, check_profile=True):
+def load_session(path, cfg, *, max_frames=None, check_profile=True, native=False):
     directory = Path(path).expanduser().resolve()
     metadata_path = directory / "session.json"
     if not metadata_path.is_file():
@@ -77,6 +77,13 @@ def load_session(path, cfg, *, max_frames=None, check_profile=True):
                 raise ValueError(f"{name}: recording profile differs from current rig: {changed}; use its original config")
     raw = [read_timestamps(directory/f"{name}_timestamps.csv") for name in CAMERA_NAMES]
     timing = cfg["timing"]
+    if native:
+        if max_frames is not None:
+            if isinstance(max_frames, bool) or int(max_frames) != max_frames or max_frames < 3:
+                raise ValueError('max_frames must be an integer >= 3')
+            raw = [values[:max_frames] for values in raw]
+        return {'path': directory, 'metadata': metadata, 'raw_times': raw,
+                'video_paths': [directory/f'{name}.avi' for name in CAMERA_NAMES]}
     pairs, times, skew = pair_timestamps(*raw, second_offset_s=timing.get("brio_offset_s", 0.),
                                          max_skew_s=timing.get("max_pair_skew_ms", 12.)/1000)
     if max_frames is not None:
@@ -106,12 +113,12 @@ class SelectedVideo:
     Older sessions without ``video_segments`` remain single-file videos. Segment
     paths come from the adjacent session.json camera entry, never a filename glob.
     """
-    def __init__(self, path, image_size=None):
+    def __init__(self, path, image_size=None, *, use_manifest=True):
         self.path = Path(path)
         self.index = -1
         self.image_size = image_size
         self.cap = None
-        self._segments = self._load_segments()
+        self._segments = self._load_segments() if use_manifest else None
         self._segment_index = -1
         if self._segments is None:
             self._open(self.path)
