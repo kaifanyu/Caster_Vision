@@ -1,0 +1,41 @@
+{
+  "test": "synthetic translation, compute smoke only; no accuracy assertion",
+  "metrics": {
+    "runtime_s": 6.825222699990263,
+    "device": "cuda",
+    "device_name": "NVIDIA GeForce RTX 4060",
+    "cuda_peak_allocated_bytes": 7205617152,
+    "cuda_peak_reserved_bytes": 8036286464,
+    "cuda_allocated_start_bytes": 103745024,
+    "cuda_peak_incremental_bytes": 7101872128,
+    "input_shape": [
+      48,
+      768,
+      768,
+      3
+    ],
+    "model_resolution": [
+      384,
+      512
+    ],
+    "n_queries": 120,
+    "support_grid_size": 6,
+    "model_passes": 2,
+    "seed": 0,
+    "precision": "float32",
+    "query_frame_forced": false
+  },
+  "tracks_shape": [
+    48,
+    120,
+    2
+  ],
+  "visibility_range": [
+    0.0001379035966238007,
+    1.0
+  ],
+  "confidence_range": [
+    0.9834005236625671,
+    1.0
+  ]
+}

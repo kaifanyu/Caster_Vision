@@ -1,0 +1,19 @@
+{
+  "python": "3.10.10 (tags/v3.10.10:aad5f6a, Feb  7 2023, 17:20:36) [MSC v.1929 64 bit (AMD64)]",
+  "executable": "C:\\Users\\aishi\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+  "repository_revision": "82e02e8029753ad4ef13cf06be7f4fc5facdda4d",
+  "checkpoint_sha256": "2670d4562ed69326dda775a26e54883925cd11b6fc9b24cb7aa9f8078bce7834",
+  "cuda": "12.1",
+  "gpu": "NVIDIA GeForce RTX 4060",
+  "dependencies": {
+    "torch": "2.5.1+cu121",
+    "torchvision": "0.20.1+cu121",
+    "numpy": "1.26.4",
+    "scipy": "1.15.3",
+    "opencv-python-headless": "4.10.0.84",
+    "einops": "0.8.1",
+    "PyYAML": "6.0.3",
+    "matplotlib": "3.10.8",
+    "imageio": "2.37.3"
+  }
+}

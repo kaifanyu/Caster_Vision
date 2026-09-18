@@ -1,0 +1,597 @@
+{
+  "exposures": {
+    "c920": {
+      "exposure_us": 15600,
+      "exposure_s": 0.0156,
+      "readbacks_agree": true,
+      "readback_stages": {
+        "controls": {
+          "exposure_absolute_units": 156,
+          "exposure_us": 15600,
+          "auto_exposure_mode": 1
+        },
+        "controls_before_stream": {
+          "exposure_absolute_units": 156,
+          "exposure_us": 15600,
+          "auto_exposure_mode": 1
+        },
+        "warmup_controls": {
+          "exposure_absolute_units": 156,
+          "exposure_us": 15600,
+          "auto_exposure_mode": 1
+        },
+        "final_controls": {
+          "exposure_absolute_units": 156,
+          "exposure_us": 15600,
+          "auto_exposure_mode": 1
+        }
+      },
+      "requested_exposure_us": 15600,
+      "unit_conversion_source": "baseline dualcam/capture.py maps exposure_us // 100 into V4L2 exposure_time_absolute",
+      "interpretation": "Read-back integration setting; individual exposure start/midpoint timestamps were not recorded."
+    },
+    "brio101": {
+      "exposure_us": 8000,
+      "exposure_s": 0.008,
+      "readbacks_agree": true,
+      "readback_stages": {
+        "controls": {
+          "exposure_absolute_units": 80,
+          "exposure_us": 8000,
+          "auto_exposure_mode": 1
+        },
+        "controls_before_stream": {
+          "exposure_absolute_units": 80,
+          "exposure_us": 8000,
+          "auto_exposure_mode": 1
+        },
+        "warmup_controls": {
+          "exposure_absolute_units": 80,
+          "exposure_us": 8000,
+          "auto_exposure_mode": 1
+        },
+        "final_controls": {
+          "exposure_absolute_units": 80,
+          "exposure_us": 8000,
+          "auto_exposure_mode": 1
+        }
+      },
+      "requested_exposure_us": 8000,
+      "unit_conversion_source": "baseline dualcam/capture.py maps exposure_us // 100 into V4L2 exposure_time_absolute",
+      "interpretation": "Read-back integration setting; individual exposure start/midpoint timestamps were not recorded."
+    }
+  },
+  "native_pixel_motion": {
+    "all": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 38695,
+            "median": 600.4289443218614,
+            "p95": 1313.5373008723075,
+            "maximum": 5218.966677159419
+          },
+          "estimated_blur_length_px": {
+            "samples": 38695,
+            "median": 9.366691531421038,
+            "p95": 20.491181893607994,
+            "maximum": 81.41588016368694
+          },
+          "sample_intervals_over_50ms": 1513
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 39144,
+            "median": 515.8063810286019,
+            "p95": 1344.9133474739458,
+            "maximum": 3448.4582079014235
+          },
+          "estimated_blur_length_px": {
+            "samples": 39144,
+            "median": 8.046579544046189,
+            "p95": 20.98064822059355,
+            "maximum": 53.79594804326221
+          },
+          "sample_intervals_over_50ms": 1528
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 39598,
+            "median": 557.3072840974181,
+            "p95": 1679.5679536018072,
+            "maximum": 5774.365708451332
+          },
+          "estimated_blur_length_px": {
+            "samples": 39598,
+            "median": 4.458458272779345,
+            "p95": 13.436543628814459,
+            "maximum": 46.194925667610654
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 38193,
+            "median": 496.8811611897219,
+            "p95": 1589.3850844142694,
+            "maximum": 4106.017664190029
+          },
+          "estimated_blur_length_px": {
+            "samples": 38193,
+            "median": 3.9750492895177754,
+            "p95": 12.715080675314155,
+            "maximum": 32.84814131352023
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "static_reference": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 4302,
+            "median": 3.821824591764159,
+            "p95": 9.214631235708024,
+            "maximum": 39.80551030626759
+          },
+          "estimated_blur_length_px": {
+            "samples": 4302,
+            "median": 0.059620463631520876,
+            "p95": 0.14374824727704516,
+            "maximum": 0.6209659607777744
+          },
+          "sample_intervals_over_50ms": 311
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 4362,
+            "median": 4.814413187085991,
+            "p95": 15.68452042606699,
+            "maximum": 51.86701903011655
+          },
+          "estimated_blur_length_px": {
+            "samples": 4362,
+            "median": 0.07510484571854145,
+            "p95": 0.24467851864664503,
+            "maximum": 0.8091254968698182
+          },
+          "sample_intervals_over_50ms": 317
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 4671,
+            "median": 5.558525987854748,
+            "p95": 24.541415169062574,
+            "maximum": 106.26118238867186
+          },
+          "estimated_blur_length_px": {
+            "samples": 4671,
+            "median": 0.04446820790283798,
+            "p95": 0.19633132135250062,
+            "maximum": 0.8500894591093748
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 4503,
+            "median": 7.368924197528404,
+            "p95": 37.039413933133915,
+            "maximum": 108.66779229042079
+          },
+          "estimated_blur_length_px": {
+            "samples": 4503,
+            "median": 0.05895139358022723,
+            "p95": 0.29631531146507134,
+            "maximum": 0.8693423383233664
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "reversal_11s": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 884,
+            "median": 707.7290369929248,
+            "p95": 1440.5177147162378,
+            "maximum": 1876.4680750340453
+          },
+          "estimated_blur_length_px": {
+            "samples": 884,
+            "median": 11.040572977089626,
+            "p95": 22.472076349573307,
+            "maximum": 29.272901970531105
+          },
+          "sample_intervals_over_50ms": 14
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 350,
+            "median": 1314.2259898213283,
+            "p95": 2216.549519072942,
+            "maximum": 2989.128048523486
+          },
+          "estimated_blur_length_px": {
+            "samples": 350,
+            "median": 20.50192544121272,
+            "p95": 34.57817249753789,
+            "maximum": 46.63039755696638
+          },
+          "sample_intervals_over_50ms": 8
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 1198,
+            "median": 797.5403029341171,
+            "p95": 1723.3433375641687,
+            "maximum": 2241.518149435053
+          },
+          "estimated_blur_length_px": {
+            "samples": 1198,
+            "median": 6.380322423472937,
+            "p95": 13.78674670051335,
+            "maximum": 17.932145195480427
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 145,
+            "median": 1486.7430348849068,
+            "p95": 2232.116257338927,
+            "maximum": 2984.5149911841336
+          },
+          "estimated_blur_length_px": {
+            "samples": 145,
+            "median": 11.893944279079255,
+            "p95": 17.85693005871142,
+            "maximum": 23.87611992947307
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "phase_break_19s": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 661,
+            "median": 782.6409586246261,
+            "p95": 1297.6857165061804,
+            "maximum": 3189.7938710194812
+          },
+          "estimated_blur_length_px": {
+            "samples": 661,
+            "median": 12.209198954544167,
+            "p95": 20.243897177496414,
+            "maximum": 49.760784387903904
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 1556,
+            "median": 139.31807009619862,
+            "p95": 1090.078683740035,
+            "maximum": 1397.553264579093
+          },
+          "estimated_blur_length_px": {
+            "samples": 1556,
+            "median": 2.173361893500698,
+            "p95": 17.005227466344543,
+            "maximum": 21.801830927433848
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 590,
+            "median": 1201.1799197791618,
+            "p95": 1858.31508274856,
+            "maximum": 3221.501044476001
+          },
+          "estimated_blur_length_px": {
+            "samples": 590,
+            "median": 9.609439358233296,
+            "p95": 14.86652066198848,
+            "maximum": 25.77200835580801
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 1468,
+            "median": 67.2723792909147,
+            "p95": 993.5567719963428,
+            "maximum": 1630.4693630011066
+          },
+          "estimated_blur_length_px": {
+            "samples": 1468,
+            "median": 0.5381790343273176,
+            "p95": 7.948454175970743,
+            "maximum": 13.043754904008853
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "phase_break_21s": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 201,
+            "median": 1342.3986069743203,
+            "p95": 1982.5721402572603,
+            "maximum": 3156.4845053388362
+          },
+          "estimated_blur_length_px": {
+            "samples": 201,
+            "median": 20.941418268799396,
+            "p95": 30.92812538801326,
+            "maximum": 49.24115828328584
+          },
+          "sample_intervals_over_50ms": 3
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 377,
+            "median": 630.2429120066048,
+            "p95": 1313.3226886753162,
+            "maximum": 2058.3964831842886
+          },
+          "estimated_blur_length_px": {
+            "samples": 377,
+            "median": 9.831789427303034,
+            "p95": 20.48783394333493,
+            "maximum": 32.1109851376749
+          },
+          "sample_intervals_over_50ms": 54
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 177,
+            "median": 1263.2678658596597,
+            "p95": 2036.76306387096,
+            "maximum": 3180.2589687014697
+          },
+          "estimated_blur_length_px": {
+            "samples": 177,
+            "median": 10.106142926877277,
+            "p95": 16.29410451096768,
+            "maximum": 25.44207174961176
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 622,
+            "median": 762.4623347196127,
+            "p95": 2023.9526399977888,
+            "maximum": 2743.601433093484
+          },
+          "estimated_blur_length_px": {
+            "samples": 622,
+            "median": 6.099698677756902,
+            "p95": 16.19162111998231,
+            "maximum": 21.948811464747873
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    }
+  },
+  "estimated_angular_rates": {
+    "warning": "Existing model-derived rate estimates, NOT ground truth. Strict support does not prove angular accuracy; phase_estimated samples have uncertain phase/turn count.",
+    "components": {
+      "roll": {
+        "all_estimates": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 142.27764240113635,
+            "p95": 186.4839045870079,
+            "maximum": 250.07643338201652
+          },
+          "peak_sample": {
+            "time_s": 21.233831552413204,
+            "receive_time_s": 21.227692839,
+            "camera": "brio101",
+            "source_frame": 635,
+            "rate_deg_s": 250.07643338201652,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "strict_supported": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 142.27764240113635,
+            "p95": 186.4839045870079,
+            "maximum": 250.07643338201652
+          },
+          "peak_sample": {
+            "time_s": 21.233831552413204,
+            "receive_time_s": 21.227692839,
+            "camera": "brio101",
+            "source_frame": 635,
+            "rate_deg_s": 250.07643338201652,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "phase_estimated": {
+          "absolute_rate_deg_s": {
+            "samples": 0,
+            "median": null,
+            "p95": null,
+            "maximum": null
+          },
+          "peak_sample": null
+        }
+      },
+      "red_spin": {
+        "all_estimates": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 18.58932383040434,
+            "p95": 205.13562140175694,
+            "maximum": 315.84470060934
+          },
+          "peak_sample": {
+            "time_s": 22.301866694413203,
+            "receive_time_s": 22.295727981,
+            "camera": "brio101",
+            "source_frame": 667,
+            "rate_deg_s": 315.84470060934,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        },
+        "strict_supported": {
+          "absolute_rate_deg_s": {
+            "samples": 1118,
+            "median": 14.137520526393189,
+            "p95": 206.28502588075722,
+            "maximum": 298.3865442954725
+          },
+          "peak_sample": {
+            "time_s": 10.436406,
+            "receive_time_s": 10.436406,
+            "camera": "c920",
+            "source_frame": 303,
+            "rate_deg_s": 298.3865442954725,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "phase_estimated": {
+          "absolute_rate_deg_s": {
+            "samples": 305,
+            "median": 44.511015018194804,
+            "p95": 179.1769174562547,
+            "maximum": 315.84470060934
+          },
+          "peak_sample": {
+            "time_s": 22.301866694413203,
+            "receive_time_s": 22.295727981,
+            "camera": "brio101",
+            "source_frame": 667,
+            "rate_deg_s": 315.84470060934,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        }
+      },
+      "green_spin": {
+        "all_estimates": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 10.207621281354267,
+            "p95": 198.34151342663344,
+            "maximum": 417.1863254805549
+          },
+          "peak_sample": {
+            "time_s": 12.168482552999999,
+            "receive_time_s": 12.168482552999999,
+            "camera": "c920",
+            "source_frame": 351,
+            "rate_deg_s": -417.1863254805549,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        },
+        "strict_supported": {
+          "absolute_rate_deg_s": {
+            "samples": 659,
+            "median": 3.6458283249909287,
+            "p95": 32.789323996263086,
+            "maximum": 219.67201229667873
+          },
+          "peak_sample": {
+            "time_s": 11.110406562413203,
+            "receive_time_s": 11.104267849,
+            "camera": "brio101",
+            "source_frame": 332,
+            "rate_deg_s": -219.67201229667873,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "phase_estimated": {
+          "absolute_rate_deg_s": {
+            "samples": 764,
+            "median": 31.99640237582861,
+            "p95": 226.9126953956606,
+            "maximum": 417.1863254805549
+          },
+          "peak_sample": {
+            "time_s": 12.168482552999999,
+            "receive_time_s": 12.168482552999999,
+            "camera": "c920",
+            "source_frame": 351,
+            "rate_deg_s": -417.1863254805549,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        }
+      }
+    }
+  },
+  "phase_bridge_gaps": [
+    {
+      "shell": "red",
+      "start_s": 19.197771212413205,
+      "end_s": 19.261720964413204,
+      "duration_s": 0.0639497519999992,
+      "short_bridge_estimated": true
+    },
+    {
+      "shell": "red",
+      "start_s": 19.281387832,
+      "end_s": 19.348841725,
+      "duration_s": 0.06745389299999971,
+      "short_bridge_estimated": true
+    },
+    {
+      "shell": "red",
+      "start_s": 19.876891076,
+      "end_s": 19.930321552413204,
+      "duration_s": 0.05343047641320453,
+      "short_bridge_estimated": true
+    },
+    {
+      "shell": "red",
+      "start_s": 21.208944022,
+      "end_s": 21.269857133413204,
+      "duration_s": 0.060913111413203325,
+      "short_bridge_estimated": true
+    },
+    {
+      "shell": "green",
+      "start_s": 11.409795190413204,
+      "end_s": 11.46849906,
+      "duration_s": 0.058703869586794966,
+      "short_bridge_estimated": true
+    }
+  ]
+}

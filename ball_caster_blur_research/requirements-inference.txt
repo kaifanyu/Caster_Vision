@@ -1,0 +1,8 @@
+# CUDA torch wheels are installed separately, as documented in IMPLEMENTATION.md.
+numpy==1.26.4
+scipy==1.15.3
+opencv-python-headless==4.10.0.84
+einops==0.8.1
+PyYAML==6.0.3
+matplotlib==3.10.8
+imageio==2.37.3

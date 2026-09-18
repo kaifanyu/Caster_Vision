@@ -35,6 +35,23 @@ def example_report():
 
 
 class PayloadTests(unittest.TestCase):
+    def test_prior_dependent_phase_stays_finite_without_a_full_turn_claim(self):
+        report = example_report()
+        report['frames'][1]['status'][1] = 'phase_estimated'
+        report['frames'][1]['angles'][1] = 4 * np.pi + .3
+        report['frames'][1]['turn_count_valid'][1] = True
+        payload = build_viewer_payload(report)
+        event = payload['frames'][1]
+        self.assertEqual(event['status'][1], 'phase_estimated')
+        self.assertAlmostEqual(event['angles'][1], 4 * np.pi + .3)
+        self.assertFalse(event['turn_count_valid'][1])
+        self.assertTrue(report['frames'][1]['turn_count_valid'][1])
+        self.assertEqual(payload['summary']['coverage']['red']['phase_estimated'], 1)
+        self.assertTrue(any('prior-dependent starting phase' in note for note in payload['notes']))
+        report['frames'][1]['angles'][1] = None
+        with self.assertRaisesRegex(ValueError, 'angle must be a finite'):
+            build_viewer_payload(report)
+
     def test_keeps_equal_native_times_masks_unknowns_and_does_not_modify_source(self):
         report = example_report()
         payload = build_viewer_payload(report)
@@ -114,6 +131,21 @@ class PayloadTests(unittest.TestCase):
 
 
 class ExportTests(unittest.TestCase):
+    def test_exports_phase_estimate_status_with_amber_legend_and_explanation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = example_report()
+            report['frames'][1]['status'][1] = 'phase_estimated'
+            report['frames'][1]['angles'][1] = .4
+            source, output = root / 'results.json', root / 'viewer.html'
+            source.write_text(json.dumps(report), encoding='utf-8')
+            write_motion_viewer(source, output)
+            html = output.read_text(encoding='utf-8')
+            self.assertIn('.tag.phase_estimated', html)
+            self.assertIn('Prior-dependent phase', html)
+            self.assertIn('PHASE ESTIMATE', html)
+            self.assertIn('Starting phase depends on a gap prior', html)
+
     def test_standalone_export_escapes_data_and_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = root / 'results.json'; output = root / 'viewer.html'

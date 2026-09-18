@@ -1,0 +1,527 @@
+{
+  "created_utc": "2026-09-18T06:31:46.922806+00:00",
+  "pipeline": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam",
+  "git_head": "14edef5acc4333bf95d1f0bc983d3d09ed0344a7",
+  "note": "Source snapshot includes uncommitted accepted work. Videos and output artifacts are referenced in place; none were changed or duplicated.",
+  "source_archive": "accepted_pipeline_source.zip",
+  "source_archive_sha256": "0ea2f7a588afca7ca3d732d796553b0b157a6c574df544cb4368b1529d22c32b",
+  "source_files": [
+    {
+      "path": ".gitignore",
+      "bytes": 99,
+      "sha256": "6b953ccb3567dd8fb419958e7566d85da3a13aba490508536abbb2601e5367dd"
+    },
+    {
+      "path": "ballrot/__init__.py",
+      "bytes": 73,
+      "sha256": "9085c626fe7de625a1e56f9c1942292a2143a848f62411d08d9b7cc65b5069f5"
+    },
+    {
+      "path": "ballrot/appearance.py",
+      "bytes": 743,
+      "sha256": "cfcfae784ab018a5f1a5e01b2fa88dd03a68828b73a29457c76476ab45e3a973"
+    },
+    {
+      "path": "ballrot/calibration.py",
+      "bytes": 8069,
+      "sha256": "2c04d50799aebd2bb0754fa48fd6f8cf62e42c84920ec3f8c2b971501b3204d7"
+    },
+    {
+      "path": "ballrot/camera.py",
+      "bytes": 6316,
+      "sha256": "e1b969e5bf9e6774f073b5f4574796cb27f2decc780b0e34f6f9a67b17b3696b"
+    },
+    {
+      "path": "ballrot/estimate.py",
+      "bytes": 18139,
+      "sha256": "62136e0d8d3d4828b60d0297de9ed7cfe05ddf635b826b1747580869a34206da"
+    },
+    {
+      "path": "ballrot/integrate.py",
+      "bytes": 16489,
+      "sha256": "bd7425a3d904a0e2961aaee27f3b1f696c077f26930f9f7a1ca708a7bd30fa93"
+    },
+    {
+      "path": "ballrot/motion_recovery.py",
+      "bytes": 6935,
+      "sha256": "790c5d4ed861aac539bdfc103ae20656f79f87312468eaa948b171c33d408ef8"
+    },
+    {
+      "path": "ballrot/rotation.py",
+      "bytes": 4107,
+      "sha256": "1eed27f4e102e6a1a2f977a81e953df5d48927626693ae3d4a1d10cd76438681"
+    },
+    {
+      "path": "ballrot/segment.py",
+      "bytes": 18677,
+      "sha256": "f42e984de906a27b82ce9e5a158fa2db2407e10899ff88b06f476ecae04f9c18"
+    },
+    {
+      "path": "ballrot/sphere.py",
+      "bytes": 9035,
+      "sha256": "ccb98adfbc08847608a87477e6ac656a0c18fe7d67ea5e523c4edc85fee73502"
+    },
+    {
+      "path": "ballrot/temporal.py",
+      "bytes": 24392,
+      "sha256": "624c05e50711af1b602364766133cd0badfd385326a98037586f34a128157ca1"
+    },
+    {
+      "path": "ballrot/track.py",
+      "bytes": 23216,
+      "sha256": "551c4e7ec520e5678736f1ccb63ca306d55d6920debb9167bb44f746329b83af"
+    },
+    {
+      "path": "calibration/axes.yaml",
+      "bytes": 1290,
+      "sha256": "3a392e909665be4eba5b279712cfe870fe5a11fac9919296ce48886067ba7fee"
+    },
+    {
+      "path": "calibration/brio101.yaml",
+      "bytes": 857,
+      "sha256": "b1b95869a51db598001a10d91b6250c845e9fe63964d53f1a2bf3c50ba5b0a45"
+    },
+    {
+      "path": "calibration/c920.yaml",
+      "bytes": 858,
+      "sha256": "d886ee8194f563345d5946bf55573dc067b88c82e8ab76dcb83da6d6066e674a"
+    },
+    {
+      "path": "calibration/kalibr_camchain.yaml",
+      "bytes": 1412,
+      "sha256": "53cff4a590cd2972073abcd0d48f0636b26b2e0cdfec924f7b5ff93bf5636e67"
+    },
+    {
+      "path": "calibration/stereo.yaml",
+      "bytes": 1325,
+      "sha256": "48377d68e431ebafcf0cb27ac4bcf4fa04f361caab25d9416c40144d4fd16acc"
+    },
+    {
+      "path": "config/rig.yaml",
+      "bytes": 3458,
+      "sha256": "db8d7fa35b47947ec89cec199e87fc80a6699aec5f3d6de82b68fb65e51b05ed"
+    },
+    {
+      "path": "docs/CAMERA_READINESS.md",
+      "bytes": 6651,
+      "sha256": "53915fed1d86181da82a2180550cfb37dba749f7d256a697ad150f02efa9c085"
+    },
+    {
+      "path": "docs/CAMERA_SETUP.md",
+      "bytes": 11973,
+      "sha256": "8a944ed8403d8fa9d9ecf7729b69b923cf31315f296713c947b43a6242d84fbd"
+    },
+    {
+      "path": "docs/ESTIMATOR_LIMITATIONS.md",
+      "bytes": 5378,
+      "sha256": "015b92119aaa172c2e950344230031f38e89e7d03686b95012548f0cdfd870aa"
+    },
+    {
+      "path": "docs/FUSED_MOTION.md",
+      "bytes": 9371,
+      "sha256": "a8862f5e849880582fec17fe70b999e6d062d4fb2444fbf9a7adc6e50c87e050"
+    },
+    {
+      "path": "docs/JOINT_OFFLINE.md",
+      "bytes": 14536,
+      "sha256": "17eedd1366bd7dcfac573d71ba793a422df6a5e259a98a3979289826b449728f"
+    },
+    {
+      "path": "docs/KALIBR_NEXT_STEPS.md",
+      "bytes": 7247,
+      "sha256": "02e5c8f6c50330a7c9decf8d63d1a042ca4bb971e70f43b709438afc4a65d994"
+    },
+    {
+      "path": "docs/RUN_RESULTS.md",
+      "bytes": 6649,
+      "sha256": "5099ce147b1349d704d93e46e12c0d638a2d5252c681a7077d5f759bb471b96d"
+    },
+    {
+      "path": "docs/TIMING_AND_HOME.md",
+      "bytes": 11163,
+      "sha256": "24470b465d132942ba55ded6c138d1d991acb88fb7dc7495a35c6dcc83ee24fc"
+    },
+    {
+      "path": "dualcam/__init__.py",
+      "bytes": 74,
+      "sha256": "0d596f11530da3863b9c4c01c540936172fa5d5ba86e3f9413b7f96928549bfd"
+    },
+    {
+      "path": "dualcam/calibration.py",
+      "bytes": 16297,
+      "sha256": "c7b4296864363e7e696ab385cef153b628f52b777ae95942325d418119cd573a"
+    },
+    {
+      "path": "dualcam/capture.py",
+      "bytes": 33086,
+      "sha256": "3e1b844ad185a93722d8556c25a022cee831530e583a25f4642fa75897d79309"
+    },
+    {
+      "path": "dualcam/config.py",
+      "bytes": 7439,
+      "sha256": "5f27a9a03245b6b392f11b15ff627098e0fb2cbff923b958632d411ad67c88ae"
+    },
+    {
+      "path": "dualcam/fused_workflow.py",
+      "bytes": 19725,
+      "sha256": "c9a68db465662e8f3188cc0d6809a772f3a874a81abbba38aeabcb6c7a483da8"
+    },
+    {
+      "path": "dualcam/fusion.py",
+      "bytes": 22122,
+      "sha256": "98bd748ad4f619d6a6d7a11961816517982010b791d2bb7918c067dcdae67697"
+    },
+    {
+      "path": "dualcam/initial_pose.py",
+      "bytes": 9377,
+      "sha256": "d23ad788fec34437fa88737b7cf02d1a1cc50ad1615e6ba0e15dd7cdb650fd88"
+    },
+    {
+      "path": "dualcam/mjpeg_avi.py",
+      "bytes": 9662,
+      "sha256": "4d6cbf5917d9a6b9db6921e40364272e0061c48e8215f0afd79a854e9df39695"
+    },
+    {
+      "path": "dualcam/model.py",
+      "bytes": 4200,
+      "sha256": "b51eeda70970716378d15dbfda0ec5e71e1a45a9ba3f3109ed8a40b341112fdd"
+    },
+    {
+      "path": "dualcam/motion_viewer.html",
+      "bytes": 25588,
+      "sha256": "988f615054bfcae46ca85c905247e1b9988a5a82862339f43dfc65be8de65bae"
+    },
+    {
+      "path": "dualcam/native_observations.py",
+      "bytes": 10859,
+      "sha256": "3074b11e24a3f2259217532feae4e542c29d7d012a3ca5f6b58947eb8021ce69"
+    },
+    {
+      "path": "dualcam/offline.py",
+      "bytes": 20480,
+      "sha256": "dbcbc613048e2e557d3fa807ea1849044eeace2ed17482587fb4513ecc329c0a"
+    },
+    {
+      "path": "dualcam/offline_finalization.py",
+      "bytes": 8129,
+      "sha256": "6e4fb17e85fcd4de56df75d0cfed658698ae0e9dc2fda2e7c9358db8103ba9f4"
+    },
+    {
+      "path": "dualcam/offline_render.py",
+      "bytes": 24310,
+      "sha256": "159a1a53f942e547fbebb12ea73e46a8af24a6becd319a0e31ae372b59b8b538"
+    },
+    {
+      "path": "dualcam/offline_workflow.py",
+      "bytes": 21734,
+      "sha256": "2fa94bda7f7e8a6f2ffef96919e1d537db4edfe5d7bb9709c53b91e5ba42a0e8"
+    },
+    {
+      "path": "dualcam/refinement.py",
+      "bytes": 4936,
+      "sha256": "327478c40fc18efbaf9b3413ccf571b7266a5bc934b9f4fbdfa57bda40fdebf9"
+    },
+    {
+      "path": "dualcam/roll_initialization.py",
+      "bytes": 11803,
+      "sha256": "00ab6ed94c26ea31ee02ceea66f64fe2a75cc40d9f6643e0f592dda472713de5"
+    },
+    {
+      "path": "dualcam/session.py",
+      "bytes": 11976,
+      "sha256": "58e1048cbea2255323b3a666373759d8768b0c651cef06015fa111ad00ec0279"
+    },
+    {
+      "path": "dualcam/solver.py",
+      "bytes": 26911,
+      "sha256": "086ac0fc4904b4d81b31d60b2deb277fc2efb46b5e6279e02629b2c0f669e24f"
+    },
+    {
+      "path": "dualcam/spin_initialization.py",
+      "bytes": 25220,
+      "sha256": "5d24880cc19953947aef37370ebe3166a9ce97d991dc1528fa881adc74980cc6"
+    },
+    {
+      "path": "dualcam/timing.py",
+      "bytes": 6650,
+      "sha256": "5f34a0f565757696919175a3aa624afdcae07c9d8f4ce5f70fb842222b5a4ef2"
+    },
+    {
+      "path": "dualcam/tracking.py",
+      "bytes": 15667,
+      "sha256": "903f6ddd8e90a36b818f34d16b1ee9adfc8a90e7fdf2a8ace4c488696bb77784"
+    },
+    {
+      "path": "dualcam/visualization.py",
+      "bytes": 10352,
+      "sha256": "436a4f7d278668569065e21ea2e7f4050686be01821ad2b14ab622dc5b7d62aa"
+    },
+    {
+      "path": "dualcam/workflow.py",
+      "bytes": 14977,
+      "sha256": "8dd18c459fd24a78a4767412901872d41b3fd7f98cbe7c517bdc46103ab89dbc"
+    },
+    {
+      "path": "pytest.ini",
+      "bytes": 50,
+      "sha256": "584e4b9ea6149b4eff0fa906a7316fc49b4fbe01a3fdec6c1f7b1e662ecdaa11"
+    },
+    {
+      "path": "README.md",
+      "bytes": 23415,
+      "sha256": "2115161c91bb3ec17c63e9cad649aaf23bfa768a2f4e1fa8d6717f6980d917b1"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 83,
+      "sha256": "2a5aacfb1c3910d07ac421b5f18a439192bb362211f8206430e0ae0e6849ce13"
+    },
+    {
+      "path": "scripts/analyze_joint.py",
+      "bytes": 2396,
+      "sha256": "4b656fb5ffee5d1d4ce1390e7926fd08d4ba28ae0c7c8aee8db05be538e22788"
+    },
+    {
+      "path": "scripts/calibrate_axes.py",
+      "bytes": 2770,
+      "sha256": "6323f4504181f31b2a3cfafe17ff4d36c7d1364d3b8ab550264a10be61e3d586"
+    },
+    {
+      "path": "scripts/calibrate_intrinsics.py",
+      "bytes": 4508,
+      "sha256": "41de1a1b415efb1a74305a54247f32cb6f9f3020bab0580faf00d913b8d95067"
+    },
+    {
+      "path": "scripts/calibrate_stereo.py",
+      "bytes": 6433,
+      "sha256": "c682e3743d218ecc0e5a9ddef76849d9e15f4a4a8e2325a7b793068cd26d2edf"
+    },
+    {
+      "path": "scripts/calibrate_timing.py",
+      "bytes": 5408,
+      "sha256": "8dba2c72c5669c96d75d4bd3dc99726ab1e4cc942696e181c9985c5b55afa484"
+    },
+    {
+      "path": "scripts/camera_setup.py",
+      "bytes": 4606,
+      "sha256": "d5af864942d5d2b9655e41954a4ab06d7452704c4cf2075de50b66a043de6b3f"
+    },
+    {
+      "path": "scripts/extract_pairs.py",
+      "bytes": 3496,
+      "sha256": "f0ec214c8269bebc3082d37b8af1414c7417bf8ca409e4feb92b8703e5f0884f"
+    },
+    {
+      "path": "scripts/preview.py",
+      "bytes": 8289,
+      "sha256": "60cc9d9122cb89702c6adea3e7514e4514b3bc90545a549dea2f7ca57842a321"
+    },
+    {
+      "path": "scripts/record.py",
+      "bytes": 2985,
+      "sha256": "508144c6093caf56f95c4ed89f724651c281781a11d49752b35e4bb5228ea8c6"
+    },
+    {
+      "path": "scripts/refilter_motion.py",
+      "bytes": 1902,
+      "sha256": "b266bee33731d0c5b00c91c4304eb0ba53b933030d17b85e96917ab5cfd882a0"
+    },
+    {
+      "path": "scripts/render.py",
+      "bytes": 4159,
+      "sha256": "5c751a02e1336828bce566d538981a1c20a1917023966891dc161e5a06f65e52"
+    },
+    {
+      "path": "scripts/run.py",
+      "bytes": 2036,
+      "sha256": "3da6466ecb37dd121d9577eaaeb837e79e4c2de17d6d182f9f2db8a9e7c520c6"
+    },
+    {
+      "path": "scripts/track_motion.py",
+      "bytes": 3325,
+      "sha256": "81150554c2bfdf384b74ea99a8556500a778af0030eb1fe2ec522d3153e1ffbe"
+    },
+    {
+      "path": "scripts/visualize_motion.py",
+      "bytes": 1195,
+      "sha256": "27263f38fa34956f3d5eb00aeb90c4b0830df8646fd97f54ab85a7ae4ab2d64d"
+    },
+    {
+      "path": "tests/__init__.py",
+      "bytes": 83,
+      "sha256": "7ddf4e916797b4c9c476e55fc284902d6563a09f67abbfe26d45de7b8d1032c1"
+    },
+    {
+      "path": "tests/temporal_adapter.py",
+      "bytes": 1783,
+      "sha256": "3ac2ec60b83147ad89883f352460224603ad849bf8fcfe9a0140d2ffe160ef1e"
+    },
+    {
+      "path": "tests/test_calibration.py",
+      "bytes": 8867,
+      "sha256": "c2560b0199a99e67c6cc20d70a66cc83c0e735ffba2d8130af86f4950c13a2a9"
+    },
+    {
+      "path": "tests/test_capture.py",
+      "bytes": 36815,
+      "sha256": "3bdd36f7668fd6a44a2c95a05ea4d291cd2a88d6971dfcf48f62c66fef66fce3"
+    },
+    {
+      "path": "tests/test_fusion.py",
+      "bytes": 13034,
+      "sha256": "eeb6d3aed5101c7927c25bdffd0da5d196e567c4f0f7fe62068ec3318441d3f5"
+    },
+    {
+      "path": "tests/test_home_hold.py",
+      "bytes": 2330,
+      "sha256": "19c64f8992390f5a847c76b7dceec733113f73235daf384adf63bc9fa899682d"
+    },
+    {
+      "path": "tests/test_image_pipeline.py",
+      "bytes": 12782,
+      "sha256": "75130882bca456763bbcc91902b43fa0a02598cef36c59c40464f20d112ce01a"
+    },
+    {
+      "path": "tests/test_initial_pose.py",
+      "bytes": 3559,
+      "sha256": "63bbdb40c750108c3a1e894688e606c61a858e5c741d2d41de0657fe20a3b69f"
+    },
+    {
+      "path": "tests/test_mjpeg_avi.py",
+      "bytes": 9267,
+      "sha256": "e75cca773c8a61caa52cfdbc346ea9b8ee807e586b1d188c99467c7b004ef189"
+    },
+    {
+      "path": "tests/test_motion_visualization.py",
+      "bytes": 9740,
+      "sha256": "1c8596f790da109b125786e673cbe22225d8aa424c30a120ba2a8a6dc8199128"
+    },
+    {
+      "path": "tests/test_native_bundle.py",
+      "bytes": 7406,
+      "sha256": "950336fc002580412b1c24687ee45df4eee5b59e5b19306c9cc0bed9227ac469"
+    },
+    {
+      "path": "tests/test_native_observations.py",
+      "bytes": 4757,
+      "sha256": "b65ce0450c0f7f2c4a401e61c4d52780ebe203ac112bd7f26ffb45270c9f8c0e"
+    },
+    {
+      "path": "tests/test_native_seed.py",
+      "bytes": 8109,
+      "sha256": "9e8d9ee20dd6041ec4bf253cdfe24b85831e89c901168fc688bb794ebb20bf6a"
+    },
+    {
+      "path": "tests/test_offline_finalization.py",
+      "bytes": 6134,
+      "sha256": "885a43a47368c144e2fd95ff1838a63976d95c86ab0e31c83466abd4ef1b2ef0"
+    },
+    {
+      "path": "tests/test_offline_render.py",
+      "bytes": 8812,
+      "sha256": "33a5a7938e8ca0a51bbdbdb6456e7f4160ecd7a0af58f2db66383dcb87011852"
+    },
+    {
+      "path": "tests/test_offline_workflow.py",
+      "bytes": 17866,
+      "sha256": "7c7f49bec7d88ac6e3c94df3d071ef9ca5b7526ad068fe0a4ba52c4a858fa4da"
+    },
+    {
+      "path": "tests/test_preview.py",
+      "bytes": 5791,
+      "sha256": "73380421c2d1b4e09174b16ced38f579bddae60a556c84b1f4ea9fe45132ff18"
+    },
+    {
+      "path": "tests/test_roll_initialization.py",
+      "bytes": 3883,
+      "sha256": "9f070978ba2a277362662bf575b228d29238cb1cdf209dece6f352fefcfe0bca"
+    },
+    {
+      "path": "tests/test_session_mjpeg.py",
+      "bytes": 2426,
+      "sha256": "f70c9b3e532064130d5ef23512cb20c69e3579d8d496c68c549c7b97375ce8a3"
+    },
+    {
+      "path": "tests/test_session_segments.py",
+      "bytes": 8956,
+      "sha256": "7c96e143e372766630f70c314b5993c668ec59078a343da18da6de7649221e77"
+    },
+    {
+      "path": "tests/test_solver.py",
+      "bytes": 11578,
+      "sha256": "fca187aeea559dc630e2fa9423e37eb2cf91f1b476c95c43a07b4128257a5d8f"
+    },
+    {
+      "path": "tests/test_spin_initialization.py",
+      "bytes": 8419,
+      "sha256": "18610170a5295c3c640e8b607f4206bd29bb0f7904a044a2956f692a263ec39b"
+    },
+    {
+      "path": "tests/test_surface_refinement.py",
+      "bytes": 5734,
+      "sha256": "99168c836fd9d57959880403fda44306cf1119128f4608eb77e77042147a29e5"
+    },
+    {
+      "path": "tests/test_temporal_motion_port.py",
+      "bytes": 8482,
+      "sha256": "1a2e942f30bda2469c65033e6a837c414805e0b2344ae69e7c9cb6d5e37f58b5"
+    },
+    {
+      "path": "tests/test_temporal_port.py",
+      "bytes": 21727,
+      "sha256": "f7055870328018012b5b4866e20f56188f592308030ea477b684f26b13e57ffa"
+    },
+    {
+      "path": "tests/test_timing.py",
+      "bytes": 5444,
+      "sha256": "1385441366141f6fdfcb90ca0d2be42cc25b6d68e1af54dc0e9e44f1d9eb48e3"
+    },
+    {
+      "path": "tests/test_tracking_session.py",
+      "bytes": 16855,
+      "sha256": "75687b31a0ca2771e112d049d236d8eb2ee2e2809c865288ee815bd440e3a3f2"
+    },
+    {
+      "path": "tests/test_workflow.py",
+      "bytes": 18240,
+      "sha256": "0fddf56df3ab2f097788592b2387865dadbec14cf0ef60a843380365c4291cb0"
+    },
+    {
+      "path": "VENDORED.md",
+      "bytes": 993,
+      "sha256": "53e4924152b9b8be715ca076c10fb2845eaa530a8630dd5aa61d6cb931758070"
+    }
+  ],
+  "reference_artifacts": [
+    {
+      "path": "out/orientation_final/results.json",
+      "bytes": 5000498,
+      "sha256": "5e865825056c0ec31d7c387ac10a95a0aaa523c1fb982a68391b9680a7bedb49"
+    },
+    {
+      "path": "out/orientation_final/results.csv",
+      "bytes": 464974,
+      "sha256": "6814c1c03d624b336e01e0abf871a4cda4c2f55f7ae5e5b8cc42446b77e35934"
+    },
+    {
+      "path": "out/orientation_final/strict_results.csv",
+      "bytes": 421010,
+      "sha256": "9572a03740af83ec492e93d9cd268a79b8fc18f11fab93ea6be4a39f30e4b5c7"
+    },
+    {
+      "path": "out/orientation_final/bundle.npz",
+      "bytes": 2169809,
+      "sha256": "3761433e11caf308c47412484d4923443fd0475f1ea7eebcd6825907cc880cce"
+    },
+    {
+      "path": "out/orientation_final/orientation_3d.html",
+      "bytes": 411377,
+      "sha256": "5ae61dc9e5ec3a4d839455ff4868953e27f98101e1e3c9f7f55c8cf52042eb88"
+    },
+    {
+      "path": "out/orientation_final/replay/combined_tracking.mp4",
+      "bytes": 19017182,
+      "sha256": "51ec2aa116500b4d4d5ed88cff4ab97a544898217080d6b91d91f32091c3241a"
+    }
+  ]
+}

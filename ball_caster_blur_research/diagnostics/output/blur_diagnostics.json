@@ -1,0 +1,1188 @@
+{
+  "baseline": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam",
+  "read_only_input_files": {
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\data\\run\\session.json": {
+      "sha256": "51df78e1e81785f6d9a98cee9076fa5ae72d395a98d761b543d043b723c2d27f",
+      "bytes": 13857
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\config\\rig.yaml": {
+      "sha256": "db8d7fa35b47947ec89cec199e87fc80a6699aec5f3d6de82b68fb65e51b05ed",
+      "bytes": 3458
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\out\\orientation_final\\results.json": {
+      "sha256": "5e865825056c0ec31d7c387ac10a95a0aaa523c1fb982a68391b9680a7bedb49",
+      "bytes": 5000498
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\out\\joint_native_cache\\native_tracks.npz": {
+      "sha256": "707ce00ed996e60aa90f57de565473e5e5bf3820abeed52a85ec223ab4a8a1ed",
+      "bytes": 26921615
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\out\\orientation_final\\conditional_spin_check.json": {
+      "sha256": "9a62deab8813cd3fe1917405370bb3c87e45f68084224a8230d33bd9dc887e95",
+      "bytes": 6697
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\data\\run\\c920.avi": {
+      "sha256": "ea2ca69ba8e1a6e9c71b4d4dba53e4fea3780620104e36d773a78f4ab48563dc",
+      "bytes": 252404334
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\data\\run\\c920_timestamps.csv": {
+      "sha256": "68f481d9c51bc7ec2f57124a8feeea6a67da066e3bebd5d2863324ea19fd5c5c",
+      "bytes": 29648
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\data\\run\\brio101.avi": {
+      "sha256": "8fb8c331cf3aebce9c3026d9a9648c0ca498f74f624f7cb211296fc6e9a63922",
+      "bytes": 191994576
+    },
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\\data\\run\\brio101_timestamps.csv": {
+      "sha256": "c303bfceca9e3d4530a2230ec7f1674574274e8a0362e9667b9710cfcac60b80",
+      "bytes": 31073
+    }
+  },
+  "versions": {
+    "opencv": "4.10.0",
+    "numpy": "1.26.4"
+  },
+  "timestamp_origin_s": 0.006457423,
+  "diagnostic_clock": "Raw host receive timestamps minus common earliest timestamp; video nominal FPS is not used.",
+  "cameras": {
+    "c920": {
+      "video_frames": 695,
+      "timestamp_frames": 695,
+      "image_size": [
+        1920,
+        1080
+      ],
+      "nominal_video_fps": 30.0,
+      "observed_fps": 28.558305168398928,
+      "interval_ms": {
+        "samples": 694,
+        "median": 32.08447699999972,
+        "p95": 37.24852519999953,
+        "maximum": 100.05731399999895
+      },
+      "intervals_over_50ms": 32,
+      "undistorted_configured_circle_xy_radius_px": [
+        960.9648348785666,
+        524.3880048597856,
+        445.586837882128
+      ],
+      "configured_ball_diameter_px": 891.173675764256,
+      "circle_scope": "Existing reviewed enclosing circle, not a new measured physical silhouette.",
+      "actual_recorded_exposure": {
+        "exposure_us": 15600,
+        "exposure_s": 0.0156,
+        "readbacks_agree": true,
+        "readback_stages": {
+          "controls": {
+            "exposure_absolute_units": 156,
+            "exposure_us": 15600,
+            "auto_exposure_mode": 1
+          },
+          "controls_before_stream": {
+            "exposure_absolute_units": 156,
+            "exposure_us": 15600,
+            "auto_exposure_mode": 1
+          },
+          "warmup_controls": {
+            "exposure_absolute_units": 156,
+            "exposure_us": 15600,
+            "auto_exposure_mode": 1
+          },
+          "final_controls": {
+            "exposure_absolute_units": 156,
+            "exposure_us": 15600,
+            "auto_exposure_mode": 1
+          }
+        },
+        "requested_exposure_us": 15600,
+        "unit_conversion_source": "baseline dualcam/capture.py maps exposure_us // 100 into V4L2 exposure_time_absolute",
+        "interpretation": "Read-back integration setting; individual exposure start/midpoint timestamps were not recorded."
+      },
+      "session_drop_estimate": {
+        "frames": 695,
+        "first_timestamp_s": 0.006457423000028939,
+        "last_timestamp_s": 24.307619410999905,
+        "observed_fps": 28.558305168399073,
+        "median_interval_ms": 32.08447700035322,
+        "max_interval_ms": 100.05731400087825,
+        "long_intervals": 32,
+        "estimated_missing_frames": 37,
+        "drop_estimate_note": "Host interval estimate; camera frame counters are unavailable."
+      }
+    },
+    "brio101": {
+      "video_frames": 728,
+      "timestamp_frames": 728,
+      "image_size": [
+        1920,
+        1080
+      ],
+      "nominal_video_fps": 30.0,
+      "observed_fps": 29.92594838972192,
+      "interval_ms": {
+        "samples": 727,
+        "median": 32.06988400000199,
+        "p95": 36.3419881999999,
+        "maximum": 39.44244499999999
+      },
+      "intervals_over_50ms": 0,
+      "undistorted_configured_circle_xy_radius_px": [
+        879.5963701186101,
+        571.1302036260283,
+        513.8752807778855
+      ],
+      "configured_ball_diameter_px": 1027.750561555771,
+      "circle_scope": "Existing reviewed enclosing circle, not a new measured physical silhouette.",
+      "actual_recorded_exposure": {
+        "exposure_us": 8000,
+        "exposure_s": 0.008,
+        "readbacks_agree": true,
+        "readback_stages": {
+          "controls": {
+            "exposure_absolute_units": 80,
+            "exposure_us": 8000,
+            "auto_exposure_mode": 1
+          },
+          "controls_before_stream": {
+            "exposure_absolute_units": 80,
+            "exposure_us": 8000,
+            "auto_exposure_mode": 1
+          },
+          "warmup_controls": {
+            "exposure_absolute_units": 80,
+            "exposure_us": 8000,
+            "auto_exposure_mode": 1
+          },
+          "final_controls": {
+            "exposure_absolute_units": 80,
+            "exposure_us": 8000,
+            "auto_exposure_mode": 1
+          }
+        },
+        "requested_exposure_us": 8000,
+        "unit_conversion_source": "baseline dualcam/capture.py maps exposure_us // 100 into V4L2 exposure_time_absolute",
+        "interpretation": "Read-back integration setting; individual exposure start/midpoint timestamps were not recorded."
+      },
+      "session_drop_estimate": {
+        "frames": 728,
+        "first_timestamp_s": 0.01716258799933712,
+        "last_timestamp_s": 24.310461183998996,
+        "observed_fps": 29.92594838972234,
+        "median_interval_ms": 32.06988400052069,
+        "max_interval_ms": 39.442444998712745,
+        "long_intervals": 0,
+        "estimated_missing_frames": 0,
+        "drop_estimate_note": "Host interval estimate; camera frame counters are unavailable."
+      }
+    }
+  },
+  "native_pixel_motion": {
+    "all": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 38695,
+            "median": 600.4289443218614,
+            "p95": 1313.5373008723075,
+            "maximum": 5218.966677159419
+          },
+          "estimated_blur_length_px": {
+            "samples": 38695,
+            "median": 9.366691531421038,
+            "p95": 20.491181893607994,
+            "maximum": 81.41588016368694
+          },
+          "sample_intervals_over_50ms": 1513
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 39144,
+            "median": 515.8063810286019,
+            "p95": 1344.9133474739458,
+            "maximum": 3448.4582079014235
+          },
+          "estimated_blur_length_px": {
+            "samples": 39144,
+            "median": 8.046579544046189,
+            "p95": 20.98064822059355,
+            "maximum": 53.79594804326221
+          },
+          "sample_intervals_over_50ms": 1528
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 39598,
+            "median": 557.3072840974181,
+            "p95": 1679.5679536018072,
+            "maximum": 5774.365708451332
+          },
+          "estimated_blur_length_px": {
+            "samples": 39598,
+            "median": 4.458458272779345,
+            "p95": 13.436543628814459,
+            "maximum": 46.194925667610654
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 38193,
+            "median": 496.8811611897219,
+            "p95": 1589.3850844142694,
+            "maximum": 4106.017664190029
+          },
+          "estimated_blur_length_px": {
+            "samples": 38193,
+            "median": 3.9750492895177754,
+            "p95": 12.715080675314155,
+            "maximum": 32.84814131352023
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "static_reference": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 4302,
+            "median": 3.821824591764159,
+            "p95": 9.214631235708024,
+            "maximum": 39.80551030626759
+          },
+          "estimated_blur_length_px": {
+            "samples": 4302,
+            "median": 0.059620463631520876,
+            "p95": 0.14374824727704516,
+            "maximum": 0.6209659607777744
+          },
+          "sample_intervals_over_50ms": 311
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 4362,
+            "median": 4.814413187085991,
+            "p95": 15.68452042606699,
+            "maximum": 51.86701903011655
+          },
+          "estimated_blur_length_px": {
+            "samples": 4362,
+            "median": 0.07510484571854145,
+            "p95": 0.24467851864664503,
+            "maximum": 0.8091254968698182
+          },
+          "sample_intervals_over_50ms": 317
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 4671,
+            "median": 5.558525987854748,
+            "p95": 24.541415169062574,
+            "maximum": 106.26118238867186
+          },
+          "estimated_blur_length_px": {
+            "samples": 4671,
+            "median": 0.04446820790283798,
+            "p95": 0.19633132135250062,
+            "maximum": 0.8500894591093748
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 4503,
+            "median": 7.368924197528404,
+            "p95": 37.039413933133915,
+            "maximum": 108.66779229042079
+          },
+          "estimated_blur_length_px": {
+            "samples": 4503,
+            "median": 0.05895139358022723,
+            "p95": 0.29631531146507134,
+            "maximum": 0.8693423383233664
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "reversal_11s": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 884,
+            "median": 707.7290369929248,
+            "p95": 1440.5177147162378,
+            "maximum": 1876.4680750340453
+          },
+          "estimated_blur_length_px": {
+            "samples": 884,
+            "median": 11.040572977089626,
+            "p95": 22.472076349573307,
+            "maximum": 29.272901970531105
+          },
+          "sample_intervals_over_50ms": 14
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 350,
+            "median": 1314.2259898213283,
+            "p95": 2216.549519072942,
+            "maximum": 2989.128048523486
+          },
+          "estimated_blur_length_px": {
+            "samples": 350,
+            "median": 20.50192544121272,
+            "p95": 34.57817249753789,
+            "maximum": 46.63039755696638
+          },
+          "sample_intervals_over_50ms": 8
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 1198,
+            "median": 797.5403029341171,
+            "p95": 1723.3433375641687,
+            "maximum": 2241.518149435053
+          },
+          "estimated_blur_length_px": {
+            "samples": 1198,
+            "median": 6.380322423472937,
+            "p95": 13.78674670051335,
+            "maximum": 17.932145195480427
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 145,
+            "median": 1486.7430348849068,
+            "p95": 2232.116257338927,
+            "maximum": 2984.5149911841336
+          },
+          "estimated_blur_length_px": {
+            "samples": 145,
+            "median": 11.893944279079255,
+            "p95": 17.85693005871142,
+            "maximum": 23.87611992947307
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "phase_break_19s": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 661,
+            "median": 782.6409586246261,
+            "p95": 1297.6857165061804,
+            "maximum": 3189.7938710194812
+          },
+          "estimated_blur_length_px": {
+            "samples": 661,
+            "median": 12.209198954544167,
+            "p95": 20.243897177496414,
+            "maximum": 49.760784387903904
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 1556,
+            "median": 139.31807009619862,
+            "p95": 1090.078683740035,
+            "maximum": 1397.553264579093
+          },
+          "estimated_blur_length_px": {
+            "samples": 1556,
+            "median": 2.173361893500698,
+            "p95": 17.005227466344543,
+            "maximum": 21.801830927433848
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 590,
+            "median": 1201.1799197791618,
+            "p95": 1858.31508274856,
+            "maximum": 3221.501044476001
+          },
+          "estimated_blur_length_px": {
+            "samples": 590,
+            "median": 9.609439358233296,
+            "p95": 14.86652066198848,
+            "maximum": 25.77200835580801
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 1468,
+            "median": 67.2723792909147,
+            "p95": 993.5567719963428,
+            "maximum": 1630.4693630011066
+          },
+          "estimated_blur_length_px": {
+            "samples": 1468,
+            "median": 0.5381790343273176,
+            "p95": 7.948454175970743,
+            "maximum": 13.043754904008853
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    },
+    "phase_break_21s": {
+      "c920": {
+        "red": {
+          "speed_px_s": {
+            "samples": 201,
+            "median": 1342.3986069743203,
+            "p95": 1982.5721402572603,
+            "maximum": 3156.4845053388362
+          },
+          "estimated_blur_length_px": {
+            "samples": 201,
+            "median": 20.941418268799396,
+            "p95": 30.92812538801326,
+            "maximum": 49.24115828328584
+          },
+          "sample_intervals_over_50ms": 3
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 377,
+            "median": 630.2429120066048,
+            "p95": 1313.3226886753162,
+            "maximum": 2058.3964831842886
+          },
+          "estimated_blur_length_px": {
+            "samples": 377,
+            "median": 9.831789427303034,
+            "p95": 20.48783394333493,
+            "maximum": 32.1109851376749
+          },
+          "sample_intervals_over_50ms": 54
+        }
+      },
+      "brio101": {
+        "red": {
+          "speed_px_s": {
+            "samples": 177,
+            "median": 1263.2678658596597,
+            "p95": 2036.76306387096,
+            "maximum": 3180.2589687014697
+          },
+          "estimated_blur_length_px": {
+            "samples": 177,
+            "median": 10.106142926877277,
+            "p95": 16.29410451096768,
+            "maximum": 25.44207174961176
+          },
+          "sample_intervals_over_50ms": 0
+        },
+        "green": {
+          "speed_px_s": {
+            "samples": 622,
+            "median": 762.4623347196127,
+            "p95": 2023.9526399977888,
+            "maximum": 2743.601433093484
+          },
+          "estimated_blur_length_px": {
+            "samples": 622,
+            "median": 6.099698677756902,
+            "p95": 16.19162111998231,
+            "maximum": 21.948811464747873
+          },
+          "sample_intervals_over_50ms": 0
+        }
+      }
+    }
+  },
+  "sharpness_proxy": {
+    "static_reference": {
+      "c920": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 8,
+            "median": 812.8318176269531,
+            "p95": 822.3327880859375,
+            "maximum": 822.5775146484375
+          },
+          "gradient_energy": {
+            "samples": 8,
+            "median": 2835.452392578125,
+            "p95": 2845.58125,
+            "maximum": 2847.5595703125
+          },
+          "laplacian_median_ratio_to_static": 1.0
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 8,
+            "median": 3368.539306640625,
+            "p95": 3552.5090576171874,
+            "maximum": 3576.793212890625
+          },
+          "gradient_energy": {
+            "samples": 8,
+            "median": 12950.61572265625,
+            "p95": 13329.476953125,
+            "maximum": 13337.6787109375
+          },
+          "laplacian_median_ratio_to_static": 1.0
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 8,
+            "median": 2118.620361328125,
+            "p95": 2168.5426635742188,
+            "maximum": 2172.08154296875
+          },
+          "gradient_energy": {
+            "samples": 8,
+            "median": 11212.26025390625,
+            "p95": 11288.874609375,
+            "maximum": 11297.0927734375
+          },
+          "laplacian_median_ratio_to_static": 1.0
+        }
+      },
+      "brio101": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 9,
+            "median": 190.6075439453125,
+            "p95": 193.54754028320312,
+            "maximum": 194.22402954101562
+          },
+          "gradient_energy": {
+            "samples": 9,
+            "median": 741.725341796875,
+            "p95": 746.4674926757813,
+            "maximum": 747.5761108398438
+          },
+          "laplacian_median_ratio_to_static": 1.0
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 9,
+            "median": 545.0218505859375,
+            "p95": 560.73623046875,
+            "maximum": 563.3309326171875
+          },
+          "gradient_energy": {
+            "samples": 9,
+            "median": 2366.350830078125,
+            "p95": 2447.01669921875,
+            "maximum": 2464.93505859375
+          },
+          "laplacian_median_ratio_to_static": 1.0
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 9,
+            "median": 478.1529846191406,
+            "p95": 495.5221801757813,
+            "maximum": 496.94036865234375
+          },
+          "gradient_energy": {
+            "samples": 9,
+            "median": 2455.762939453125,
+            "p95": 2563.41572265625,
+            "maximum": 2567.8642578125
+          },
+          "laplacian_median_ratio_to_static": 1.0
+        }
+      }
+    },
+    "reversal_11s": {
+      "c920": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 17,
+            "median": 154.6329345703125,
+            "p95": 328.65078735351557,
+            "maximum": 404.3554992675781
+          },
+          "gradient_energy": {
+            "samples": 17,
+            "median": 1137.6055908203125,
+            "p95": 1551.386865234375,
+            "maximum": 1741.240478515625
+          },
+          "laplacian_median_ratio_to_static": 0.19023976573869902
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 17,
+            "median": 370.2884521484375,
+            "p95": 835.5031494140624,
+            "maximum": 1010.4237060546875
+          },
+          "gradient_energy": {
+            "samples": 17,
+            "median": 4137.890625,
+            "p95": 5402.380175781249,
+            "maximum": 6262.22119140625
+          },
+          "laplacian_median_ratio_to_static": 0.1099255251136489
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 17,
+            "median": 112.21356201171875,
+            "p95": 211.7774505615234,
+            "maximum": 255.96226501464844
+          },
+          "gradient_energy": {
+            "samples": 17,
+            "median": 2094.822998046875,
+            "p95": 2805.1043945312495,
+            "maximum": 3158.01513671875
+          },
+          "laplacian_median_ratio_to_static": 0.0529653939233238
+        }
+      },
+      "brio101": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 18,
+            "median": 158.59568786621094,
+            "p95": 181.75169982910157,
+            "maximum": 182.50650024414062
+          },
+          "gradient_energy": {
+            "samples": 18,
+            "median": 622.2699279785156,
+            "p95": 713.2367797851563,
+            "maximum": 722.0177612304688
+          },
+          "laplacian_median_ratio_to_static": 0.8320535724006489
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 18,
+            "median": 302.8966522216797,
+            "p95": 347.08681030273436,
+            "maximum": 355.06292724609375
+          },
+          "gradient_energy": {
+            "samples": 18,
+            "median": 1449.7553100585938,
+            "p95": 1651.3710205078125,
+            "maximum": 1660.7608642578125
+          },
+          "laplacian_median_ratio_to_static": 0.5557513921616979
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 18,
+            "median": 397.64141845703125,
+            "p95": 582.656378173828,
+            "maximum": 652.4428100585938
+          },
+          "gradient_energy": {
+            "samples": 18,
+            "median": 2281.9522705078125,
+            "p95": 3368.988781738281,
+            "maximum": 3447.8974609375
+          },
+          "laplacian_median_ratio_to_static": 0.8316196515509808
+        }
+      }
+    },
+    "phase_break_19s": {
+      "c920": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 24,
+            "median": 128.53146362304688,
+            "p95": 330.729685974121,
+            "maximum": 360.677490234375
+          },
+          "gradient_energy": {
+            "samples": 24,
+            "median": 1034.7576293945312,
+            "p95": 1567.2407348632812,
+            "maximum": 1596.7034912109375
+          },
+          "laplacian_median_ratio_to_static": 0.15812799257574833
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 24,
+            "median": 312.67967224121094,
+            "p95": 649.2861572265624,
+            "maximum": 756.0847778320312
+          },
+          "gradient_energy": {
+            "samples": 24,
+            "median": 2697.82275390625,
+            "p95": 4909.630761718749,
+            "maximum": 5278.88916015625
+          },
+          "laplacian_median_ratio_to_static": 0.09282351897298771
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 24,
+            "median": 361.9263000488281,
+            "p95": 568.9107482910156,
+            "maximum": 673.5874633789062
+          },
+          "gradient_energy": {
+            "samples": 24,
+            "median": 3748.7642822265625,
+            "p95": 4812.976977539061,
+            "maximum": 4931.017578125
+          },
+          "laplacian_median_ratio_to_static": 0.1708311251299138
+        }
+      },
+      "brio101": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 24,
+            "median": 163.31441497802734,
+            "p95": 176.5112190246582,
+            "maximum": 182.97999572753906
+          },
+          "gradient_energy": {
+            "samples": 24,
+            "median": 607.2748107910156,
+            "p95": 691.2203887939453,
+            "maximum": 751.885498046875
+          },
+          "laplacian_median_ratio_to_static": 0.8568098176895041
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 24,
+            "median": 205.12828063964844,
+            "p95": 323.44726257324214,
+            "maximum": 329.70806884765625
+          },
+          "gradient_energy": {
+            "samples": 24,
+            "median": 656.9894409179688,
+            "p95": 1564.2868469238279,
+            "maximum": 1596.41162109375
+          },
+          "laplacian_median_ratio_to_static": 0.3763670766944864
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 24,
+            "median": 308.0121307373047,
+            "p95": 324.4808776855469,
+            "maximum": 330.8004150390625
+          },
+          "gradient_energy": {
+            "samples": 24,
+            "median": 1472.62109375,
+            "p95": 1620.7827026367186,
+            "maximum": 1630.701416015625
+          },
+          "laplacian_median_ratio_to_static": 0.644170674753067
+        }
+      }
+    },
+    "phase_break_21s": {
+      "c920": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 11,
+            "median": 60.38389205932617,
+            "p95": 206.09496307373047,
+            "maximum": 254.3852996826172
+          },
+          "gradient_energy": {
+            "samples": 11,
+            "median": 642.6421508789062,
+            "p95": 1265.9632568359375,
+            "maximum": 1353.975341796875
+          },
+          "laplacian_median_ratio_to_static": 0.0742882977140533
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 11,
+            "median": 89.71791076660156,
+            "p95": 353.9132995605469,
+            "maximum": 385.222412109375
+          },
+          "gradient_energy": {
+            "samples": 11,
+            "median": 2117.761962890625,
+            "p95": 2859.5989990234375,
+            "maximum": 2935.068359375
+          },
+          "laplacian_median_ratio_to_static": 0.026634069725632915
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 11,
+            "median": 110.5007095336914,
+            "p95": 438.888427734375,
+            "maximum": 577.5167846679688
+          },
+          "gradient_energy": {
+            "samples": 11,
+            "median": 1975.6220703125,
+            "p95": 3698.6435546875,
+            "maximum": 3705.30078125
+          },
+          "laplacian_median_ratio_to_static": 0.052156918507297124
+        }
+      },
+      "brio101": {
+        "ball_roi": {
+          "laplacian_variance": {
+            "samples": 12,
+            "median": 137.28196716308594,
+            "p95": 156.62671508789063,
+            "maximum": 158.6967010498047
+          },
+          "gradient_energy": {
+            "samples": 12,
+            "median": 507.6663513183594,
+            "p95": 622.5298034667969,
+            "maximum": 629.0655517578125
+          },
+          "laplacian_median_ratio_to_static": 0.7202336503662925
+        },
+        "red": {
+          "laplacian_variance": {
+            "samples": 12,
+            "median": 225.44849395751953,
+            "p95": 307.4578491210937,
+            "maximum": 319.5673828125
+          },
+          "gradient_energy": {
+            "samples": 12,
+            "median": 1010.5561218261719,
+            "p95": 1611.9392456054686,
+            "maximum": 1744.471923828125
+          },
+          "laplacian_median_ratio_to_static": 0.4136503769805674
+        },
+        "green": {
+          "laplacian_variance": {
+            "samples": 12,
+            "median": 260.38746643066406,
+            "p95": 309.6470977783203,
+            "maximum": 315.71270751953125
+          },
+          "gradient_energy": {
+            "samples": 12,
+            "median": 1307.9801025390625,
+            "p95": 1536.0184082031249,
+            "maximum": 1581.993896484375
+          },
+          "laplacian_median_ratio_to_static": 0.5445693633765947
+        }
+      }
+    }
+  },
+  "estimated_angular_rates": {
+    "warning": "Existing model-derived rate estimates, NOT ground truth. Groups use existing PHASE status, not a dedicated velocity-observability test. phase_estimated can retain identifiable local angular velocity despite an unknown accumulated phase or turn count. Strict phase support also does not prove angular accuracy.",
+    "components": {
+      "roll": {
+        "all_estimates": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 142.27764240113635,
+            "p95": 186.4839045870079,
+            "maximum": 250.07643338201652
+          },
+          "peak_sample": {
+            "time_s": 21.233831552413204,
+            "receive_time_s": 21.227692839,
+            "camera": "brio101",
+            "source_frame": 635,
+            "rate_deg_s": 250.07643338201652,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "strict_supported": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 142.27764240113635,
+            "p95": 186.4839045870079,
+            "maximum": 250.07643338201652
+          },
+          "peak_sample": {
+            "time_s": 21.233831552413204,
+            "receive_time_s": 21.227692839,
+            "camera": "brio101",
+            "source_frame": 635,
+            "rate_deg_s": 250.07643338201652,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "phase_estimated": {
+          "absolute_rate_deg_s": {
+            "samples": 0,
+            "median": null,
+            "p95": null,
+            "maximum": null
+          },
+          "peak_sample": null
+        }
+      },
+      "red_spin": {
+        "all_estimates": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 18.58932383040434,
+            "p95": 205.13562140175694,
+            "maximum": 315.84470060934
+          },
+          "peak_sample": {
+            "time_s": 22.301866694413203,
+            "receive_time_s": 22.295727981,
+            "camera": "brio101",
+            "source_frame": 667,
+            "rate_deg_s": 315.84470060934,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        },
+        "strict_supported": {
+          "absolute_rate_deg_s": {
+            "samples": 1118,
+            "median": 14.137520526393189,
+            "p95": 206.28502588075722,
+            "maximum": 298.3865442954725
+          },
+          "peak_sample": {
+            "time_s": 10.436406,
+            "receive_time_s": 10.436406,
+            "camera": "c920",
+            "source_frame": 303,
+            "rate_deg_s": 298.3865442954725,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "phase_estimated": {
+          "absolute_rate_deg_s": {
+            "samples": 305,
+            "median": 44.511015018194804,
+            "p95": 179.1769174562547,
+            "maximum": 315.84470060934
+          },
+          "peak_sample": {
+            "time_s": 22.301866694413203,
+            "receive_time_s": 22.295727981,
+            "camera": "brio101",
+            "source_frame": 667,
+            "rate_deg_s": 315.84470060934,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        }
+      },
+      "green_spin": {
+        "all_estimates": {
+          "absolute_rate_deg_s": {
+            "samples": 1423,
+            "median": 10.207621281354267,
+            "p95": 198.34151342663344,
+            "maximum": 417.1863254805549
+          },
+          "peak_sample": {
+            "time_s": 12.168482552999999,
+            "receive_time_s": 12.168482552999999,
+            "camera": "c920",
+            "source_frame": 351,
+            "rate_deg_s": -417.1863254805549,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        },
+        "strict_supported": {
+          "absolute_rate_deg_s": {
+            "samples": 659,
+            "median": 3.6458283249909287,
+            "p95": 32.789323996263086,
+            "maximum": 219.67201229667873
+          },
+          "peak_sample": {
+            "time_s": 11.110406562413203,
+            "receive_time_s": 11.104267849,
+            "camera": "brio101",
+            "source_frame": 332,
+            "rate_deg_s": -219.67201229667873,
+            "status": "vision",
+            "strict_status": "vision",
+            "turn_count_valid": true
+          }
+        },
+        "phase_estimated": {
+          "absolute_rate_deg_s": {
+            "samples": 764,
+            "median": 31.99640237582861,
+            "p95": 226.9126953956606,
+            "maximum": 417.1863254805549
+          },
+          "peak_sample": {
+            "time_s": 12.168482552999999,
+            "receive_time_s": 12.168482552999999,
+            "camera": "c920",
+            "source_frame": 351,
+            "rate_deg_s": -417.1863254805549,
+            "status": "phase_estimated",
+            "strict_status": "unresolved",
+            "turn_count_valid": false
+          }
+        }
+      }
+    }
+  },
+  "ambiguity": {
+    "strict_supported_event_fraction": {
+      "roll": 1.0,
+      "red": 0.7856640899508082,
+      "green": 0.4631061138439916
+    },
+    "locally_supported_angular_event_fraction": {
+      "red": 0.9929725931131412,
+      "green": 0.9992972593113141
+    },
+    "local_angular_support_gaps": {
+      "red": [
+        {
+          "first_unresolved_s": 19.212887145,
+          "last_unresolved_s": 19.245202177,
+          "preceding_support_s": 19.197771212413205,
+          "next_support_s": 19.261720964413204,
+          "bracket_duration_s": 0.0639497519999992,
+          "unresolved_events": 3
+        },
+        {
+          "first_unresolved_s": 19.297727248413203,
+          "last_unresolved_s": 19.330006373413205,
+          "preceding_support_s": 19.281387832,
+          "next_support_s": 19.348841725,
+          "bracket_duration_s": 0.06745389299999971,
+          "unresolved_events": 3
+        },
+        {
+          "first_unresolved_s": 19.897752520413203,
+          "last_unresolved_s": 19.912940749,
+          "preceding_support_s": 19.876891076,
+          "next_support_s": 19.930321552413204,
+          "bracket_duration_s": 0.05343047641320453,
+          "unresolved_events": 2
+        },
+        {
+          "first_unresolved_s": 21.233831552413204,
+          "last_unresolved_s": 21.240943407,
+          "preceding_support_s": 21.208944022,
+          "next_support_s": 21.269857133413204,
+          "bracket_duration_s": 0.060913111413203325,
+          "unresolved_events": 2
+        }
+      ],
+      "green": [
+        {
+          "first_unresolved_s": 11.445367013413204,
+          "last_unresolved_s": 11.445367013413204,
+          "preceding_support_s": 11.409795190413204,
+          "next_support_s": 11.46849906,
+          "bracket_duration_s": 0.058703869586794966,
+          "unresolved_events": 1
+        }
+      ]
+    },
+    "display_coverage": {
+      "roll": {
+        "home": 1,
+        "vision": 1422
+      },
+      "red": {
+        "home": 1,
+        "vision": 1117,
+        "phase_estimated": 305
+      },
+      "green": {
+        "home": 1,
+        "vision": 658,
+        "phase_estimated": 764
+      }
+    },
+    "phase_bridge_gaps": [
+      {
+        "shell": "red",
+        "start_s": 19.197771212413205,
+        "end_s": 19.261720964413204,
+        "duration_s": 0.0639497519999992,
+        "short_bridge_estimated": true
+      },
+      {
+        "shell": "red",
+        "start_s": 19.281387832,
+        "end_s": 19.348841725,
+        "duration_s": 0.06745389299999971,
+        "short_bridge_estimated": true
+      },
+      {
+        "shell": "red",
+        "start_s": 19.876891076,
+        "end_s": 19.930321552413204,
+        "duration_s": 0.05343047641320453,
+        "short_bridge_estimated": true
+      },
+      {
+        "shell": "red",
+        "start_s": 21.208944022,
+        "end_s": 21.269857133413204,
+        "duration_s": 0.060913111413203325,
+        "short_bridge_estimated": true
+      },
+      {
+        "shell": "green",
+        "start_s": 11.409795190413204,
+        "end_s": 11.46849906,
+        "duration_s": 0.058703869586794966,
+        "short_bridge_estimated": true
+      }
+    ],
+    "turn_count_valid_at_end": [
+      true,
+      false,
+      false
+    ],
+    "fitted_brio_time_offset_s": 0.00613871341320485,
+    "accuracy_validated": false
+  },
+  "limitations": [
+    "Blur length is surviving native KLT pixel displacement / receive-time interval * read-back exposure. It assumes locally constant image velocity and exposure duration matching its control readback.",
+    "Native pixel velocity is measured in undistorted original-K pixels. Raw-image distortion, temporal acceleration, shutter/readout behavior, sensor latency and USB buffering introduce uncertainty.",
+    "Failed or occluded tracks are absent: displacement and blur summaries are survivor-biased and can underestimate the hardest motion. Host receive gaps are not measured exposure gaps.",
+    "Laplacian and gradient statistics are sharpness proxies, not blur-kernel or MTF measurements. Shell pose, paint density, mask thresholding, illumination and noise confound comparisons; absolute cross-camera values are not equivalent.",
+    "Orientation-derived rates are model estimates. phase_estimated flags accumulated phase/turn ambiguity and does not imply all subsequent local velocities are unobserved. A constant unknown phase cancels in a derivative. Existing local angular support is a useful proxy, not an independent validation of rate accuracy.",
+    "A subsequent estimator should export separate rate_status, phase_valid and turn_count_valid fields, and test derivative observability within each locally connected component independently of its absolute phase.",
+    "Contact-sheet full-ball panels are resized for context. The fixed 240x240 texture patches preserve native pixel scale; JPEG sheet compression is for inspection only."
+  ],
+  "reproduce": "python \"C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\diagnostics\\analyze_recordings.py\" --baseline \"C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_dual_cam\" --output \"C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\diagnostics\\output\""
+}

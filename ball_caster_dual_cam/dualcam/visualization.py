@@ -18,7 +18,7 @@ import numpy as np
 
 CAMERAS = ('c920', 'brio101')
 COMPONENTS = ('roll', 'red', 'green')
-STATUSES = frozenset(('home', 'vision', 'predicted', 'unresolved'))
+STATUSES = frozenset(('home', 'vision', 'predicted', 'phase_estimated', 'unresolved'))
 TEMPLATE = Path(__file__).with_name('motion_viewer.html')
 
 
@@ -115,7 +115,7 @@ def build_viewer_payload(report, source_results=None):
             raise ValueError(f'{prefix} turn_count_valid must contain booleans')
         frames.append({'time_s': time, 'camera': camera, 'source_frame': int(source_frame),
                        'angles': angles, 'status': status, 'std_rad': std, 'age_s': age,
-                       'turn_count_valid': [bool(value) and status[i] != 'unresolved'
+                       'turn_count_valid': [bool(value) and status[i] not in ('unresolved', 'phase_estimated')
                                             for i, value in enumerate(turns)]})
 
     source = report.get('measurement_source', 'unknown')
@@ -124,7 +124,8 @@ def build_viewer_payload(report, source_results=None):
     notes = [
         'One shared state combines the two camera streams at their native timestamps.',
         'This is a visualization of the saved estimate, not independent physical accuracy validation.',
-        'Predicted states lack a fresh image measurement; unresolved components are hidden. No gaps are filled.',
+        'Predicted states lack a fresh image measurement; unresolved components are hidden. Playback does not fill missing source samples.',
+        'phase_estimated retains a prior-dependent starting phase after a tracking gap. Later relative changes may be measured, but accumulated phase and full-turn count are not established by those changes.',
         'Shell spins are relative to the start of this recording; reference markings are illustrative.',
         'A recovered orientation does not establish missed full revolutions when turn_count_valid is false.',
     ]

@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/facebookresearch/co-tracker",
+  "revision": "82e02e8029753ad4ef13cf06be7f4fc5facdda4d",
+  "model": "CoTracker3 scaled offline",
+  "checkpoint_url": "https://huggingface.co/facebook/cotracker3/resolve/main/scaled_offline.pth",
+  "checkpoint_sha256": "2670d4562ed69326dda775a26e54883925cd11b6fc9b24cb7aa9f8078bce7834",
+  "checkpoint_bytes": 101890938,
+  "upstream_license": "CC-BY-NC-4.0; see third_party/co-tracker/LICENSE.md",
+  "tested_python": "3.10.10",
+  "tested_gpu": "NVIDIA GeForce RTX 4060",
+  "tested_torch": "2.5.1+cu121",
+  "precision": "float32",
+  "model_resolution_hw": [384, 512],
+  "native_crop_resized_hw": [640, 640],
+  "temporal_window_frames": 60,
+  "window_stride_frames": 40,
+  "queries_per_shell_per_anchor": 32,
+  "anchor_frames": "first, middle, last of each window",
+  "support_grid_size": 6,
+  "encoder_chunk_frames": 16,
+  "inference_iterations": 6
+}

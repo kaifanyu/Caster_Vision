@@ -1,16 +1,38 @@
 # Dual-camera ball-caster calibration
 
+For full offline reconstruction of the supplied recordings, use the new
+[joint native-time workflow](docs/JOINT_OFFLINE.md):
+
+```powershell
+python scripts/analyze_joint.py --session data/run --initial-roll-deg 8 --cache out/joint_native_cache --output out/my_joint_run --render
+```
+
+This fits one shared trajectory and the material surface landmarks to **every
+native image**, using the physical separated hemispheres throughout. It refines
+the approximate initial roll, writes per-shell quaternions and support flags,
+and generates both video overlays with one simulated assembly. C920 is **cam0**;
+Brio 101 is **cam1**. The earlier workflows below remain available.
+
+The supplied run has been processed in `out/orientation_final`: open
+`replay/combined_tracking.mp4` or `orientation_3d.html`. See the
+[measured results and limitations](docs/RUN_RESULTS.md). Amber `phase_estimated`
+segments retain a continuous best estimate after short gaps; `strict_results.csv`
+leaves those accumulated phases blank. A completed fit is not an independent
+absolute-accuracy validation.
+
 This project records a Logitech C920 and Brio 101 with repeatable Linux V4L2
 settings, calibrates their relative pose, and fits **one mechanical axis frame,
 one shared roll, and two independent shell spins** to both camera images.
 It uses the separated-hemisphere construction: two shell curvature centers are
-separated by the physical rim gap and move with roll. Camera 1 is the C920.
+separated by the physical rim gap and move with roll. C920 is cam0 and Brio 101 is cam1.
 
 The original `../ball_caster_rot` project is unchanged. Reused segmentation,
 tracking and rotation initialization modules are documented in `VENDORED.md`.
 
-**The supplied Kalibr intrinsics and stereo transform are imported.** Axis
-calibration and measured camera timing are still pending. The supplied 100 mm
+**Intrinsics, the stereo transform, and a saved mechanical axis calibration are
+present.** Independently measured camera exposure timing remains unverified.
+The joint offline workflow checks the supplied recordings against this geometry.
+The supplied 100 mm
 shell radius and 20 mm gap come from the original project's configuration;
 verify these physical dimensions on your rig. See the
 [current calibration results and next steps](docs/KALIBR_NEXT_STEPS.md).

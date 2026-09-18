@@ -1,0 +1,129 @@
+# Short-exposure EXPERIMENT preset; not yet verified on the cameras.
+# Applied only when passed explicitly to the Linux V4L2 recorder via --config.
+# Hardware may quantize/reject the requested exposure; never skip readback.
+# All calibrated image dimensions, lens positions and geometry are preserved.
+# Gain 180 is held fixed for an exposure sweep, not an optimum noise setting.
+# See ../CAMERA_SETTINGS.md for illumination, validation and commands.
+schema_version: 1
+cameras:
+  c920:
+    device: /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_05577B1F-video-index0
+    intrinsics: ../../ball_caster_dual_cam/calibration/c920.yaml
+    capture:
+      width: 1920
+      height: 1080
+      fps: 30
+      fourcc: MJPG
+      exposure_us: 2000
+      gain: 180
+      white_balance_kelvin: 4000
+      power_line_frequency: 2
+      focus: 50
+      zoom: 100
+      brightness: 128
+      contrast: 128
+      saturation: 128
+      sharpness: 128
+      backlight_compensation: 0
+    circle:
+    - 960.9648348785666
+    - 524.3880048597856
+    - 445.586837882128
+    segment:
+      red_hsv:
+        lo:
+        - 170
+        - 130
+        - 60
+        hi:
+        - 12
+        - 255
+        - 255
+      green_hsv:
+        lo:
+        - 40
+        - 70
+        - 30
+        hi:
+        - 100
+        - 255
+        - 255
+      grow_px: 5
+      separation_px: 5
+      morphology_px: 3
+      boundary_margin_px: 1
+  brio101:
+    device: /dev/v4l/by-id/usb-046d_Brio_101_2516APNGPSE8-video-index0
+    intrinsics: ../../ball_caster_dual_cam/calibration/brio101.yaml
+    capture:
+      width: 1920
+      height: 1080
+      fps: 30
+      fourcc: MJPG
+      exposure_us: 2000
+      gain: 180
+      white_balance_kelvin: 4000
+      power_line_frequency: 2
+      brightness: 128
+      contrast: 128
+      saturation: 128
+      sharpness: 128
+      backlight_compensation: 0
+    circle:
+    - 879.5963701186101
+    - 571.1302036260283
+    - 513.8752807778855
+    segment:
+      red_hsv:
+        lo:
+        - 170
+        - 110
+        - 50
+        hi:
+        - 12
+        - 255
+        - 255
+      green_hsv:
+        lo:
+        - 40
+        - 120
+        - 30
+        hi:
+        - 100
+        - 255
+        - 255
+      grow_px: 5
+      separation_px: 5
+      morphology_px: 3
+      boundary_margin_px: 1
+stereo:
+  path: ../../ball_caster_dual_cam/calibration/stereo.yaml
+axes:
+  path: ../../ball_caster_dual_cam/calibration/axes.yaml
+geometry:
+  radius_m: 0.1
+  gap_m: 0.02
+  red_shell_sign: 1
+  pivot_c920_m: null
+  R_bc_seed: null
+timing:
+  brio_offset_s: 0.0
+  max_pair_skew_ms: 12.0
+  verified: false
+tracking:
+  max_corners: 80
+  quality: 0.005
+  min_distance_px: 7
+  klt_win: 21
+  pyramid_levels: 3
+  fwd_bwd_err_px: 0.8
+  min_track_length: 3
+  min_axis_step_deg: 0.2
+solver:
+  min_points_per_frame: 8
+  robust_px: 1.0
+  outlier_px: 3.0
+  max_inlier_rmse_px: 2.0
+  min_inlier_fraction: 0.7
+  min_calibration_excursion_deg: 15.0
+  max_nfev: 250

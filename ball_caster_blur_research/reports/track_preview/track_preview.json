@@ -1,0 +1,203 @@
+{
+  "contact_sheet": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\reports\\track_preview\\track_contacts.jpg",
+  "raw_overlay_pairs": [
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\reports\\track_preview\\tracks_00_01.000s.jpg",
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\reports\\track_preview\\tracks_01_11.200s.jpg",
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\reports\\track_preview\\tracks_02_19.200s.jpg",
+    "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\reports\\track_preview\\tracks_03_21.200s.jpg"
+  ],
+  "requested_times_s": [
+    1.0,
+    11.2,
+    19.2,
+    21.2
+  ],
+  "additional_brio_offset_s": 0.0,
+  "candidate_policy": "Window candidates before spatial deduplication and physical metric rejection; query anchors are detector observations.",
+  "records": [
+    {
+      "camera": "c920",
+      "requested_time_s": 1.0,
+      "source_frame": 28,
+      "source_time_s": 0.995955276,
+      "display_time_s": 0.995955276,
+      "selection_error_s": -0.0040447239999999995,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\c920_00000_00059.npz",
+      "counts": {
+        "accepted_candidates": 180,
+        "accepted_red": 91,
+        "accepted_green": 89,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 12,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        0,
+        59
+      ]
+    },
+    {
+      "camera": "c920",
+      "requested_time_s": 11.2,
+      "source_frame": 326,
+      "source_time_s": 11.200527818,
+      "display_time_s": 11.200527818,
+      "selection_error_s": 0.0005278180000001242,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\c920_00280_00339.npz",
+      "counts": {
+        "accepted_candidates": 44,
+        "accepted_red": 24,
+        "accepted_green": 20,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 26,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        280,
+        339
+      ]
+    },
+    {
+      "camera": "c920",
+      "requested_time_s": 19.2,
+      "source_frame": 556,
+      "source_time_s": 19.212887145,
+      "display_time_s": 19.212887145,
+      "selection_error_s": 0.012887145000000544,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\c920_00520_00579.npz",
+      "counts": {
+        "accepted_candidates": 76,
+        "accepted_red": 1,
+        "accepted_green": 75,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 20,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        520,
+        579
+      ]
+    },
+    {
+      "camera": "c920",
+      "requested_time_s": 21.2,
+      "source_frame": 612,
+      "source_time_s": 21.208944022,
+      "display_time_s": 21.208944022,
+      "selection_error_s": 0.00894402200000144,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\c920_00600_00659.npz",
+      "counts": {
+        "accepted_candidates": 3,
+        "accepted_red": 0,
+        "accepted_green": 3,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 19,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        600,
+        659
+      ]
+    },
+    {
+      "camera": "brio101",
+      "requested_time_s": 1.0,
+      "source_frame": 30,
+      "source_time_s": 1.0147363889999998,
+      "display_time_s": 1.0147363889999998,
+      "selection_error_s": 0.01473638899999985,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\brio101_00000_00059.npz",
+      "counts": {
+        "accepted_candidates": 186,
+        "accepted_red": 94,
+        "accepted_green": 92,
+        "accepted_query_anchors": 64,
+        "rejected_model_visible": 6,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        0,
+        59
+      ]
+    },
+    {
+      "camera": "brio101",
+      "requested_time_s": 11.2,
+      "source_frame": 335,
+      "source_time_s": 11.204473163,
+      "display_time_s": 11.204473163,
+      "selection_error_s": 0.004473163000000113,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\brio101_00320_00379.npz",
+      "counts": {
+        "accepted_candidates": 55,
+        "accepted_red": 52,
+        "accepted_green": 3,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 12,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        320,
+        379
+      ]
+    },
+    {
+      "camera": "brio101",
+      "requested_time_s": 19.2,
+      "source_frame": 574,
+      "source_time_s": 19.191632499,
+      "display_time_s": 19.191632499,
+      "selection_error_s": -0.008367500999998612,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\brio101_00560_00619.npz",
+      "counts": {
+        "accepted_candidates": 68,
+        "accepted_red": 0,
+        "accepted_green": 68,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 14,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        560,
+        619
+      ]
+    },
+    {
+      "camera": "brio101",
+      "requested_time_s": 21.2,
+      "source_frame": 634,
+      "source_time_s": 21.195665824,
+      "display_time_s": 21.195665824,
+      "selection_error_s": -0.0043341760000004115,
+      "status": "rendered",
+      "window": "C:\\Users\\aishi\\Documents\\Upenn\\Caster_Vision\\ball_caster_blur_research\\experiments\\cotracker_native\\brio101_00600_00659.npz",
+      "counts": {
+        "accepted_candidates": 59,
+        "accepted_red": 3,
+        "accepted_green": 56,
+        "accepted_query_anchors": 0,
+        "rejected_model_visible": 21,
+        "accepted_outside_image": 0,
+        "total_queries": 192
+      },
+      "window_source_range": [
+        600,
+        659
+      ]
+    }
+  ]
+}
