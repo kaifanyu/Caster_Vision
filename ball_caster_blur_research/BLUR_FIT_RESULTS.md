@@ -11,6 +11,11 @@ images, rendered hypotheses, residuals and the numerical comparisons. The
 counts and individual evidence-file links. Recording instructions and complete
 trial YAML files are in [CAMERA_SETTINGS.md](CAMERA_SETTINGS.md).
 
+The local fits also have an [interactive simulated-axis comparison](experiments/physics_axis_preview/orientation_3d.html)
+and a [two-camera axis-overlay video](experiments/physics_axis_preview/physics_axes.mp4).
+These show separate local hypotheses beside the prior, with independent red/green
+material X/Y axes; they do not replace or extend the full-run trajectory.
+
 ## Measured outcome and decision
 
 **Keep the accepted trajectory. This experiment has not demonstrated reliable

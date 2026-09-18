@@ -61,6 +61,8 @@ def main():
     page+='<title>Physical blur experiments</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:32px auto;padding:0 20px;max-width:1500px;color:#243244;background:#f5f7fa}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;background:white;font-size:14px}td,th{padding:10px;border:1px solid #dce2e9;text-align:left}th{background:#e8eef5}article{margin-top:32px;padding:20px;background:white;border:1px solid #dce2e9;border-radius:8px}img{width:100%;height:auto}a{color:#155bb1}.scroll{overflow-x:auto}</style>'
     page+='<h1>Physical blur experiments on the existing recordings</h1><p>'+html.escape(intro)+'</p>'
     page+='<p><a href="../../BLUR_FIT_RESULTS.md">Interpretation and limitations</a> · <a href="../../CAMERA_SETTINGS.md">Recording settings</a></p>'
+    if (args.root.parent/'physics_axis_preview/orientation_3d.html').exists():
+        page+='<p><a href="../physics_axis_preview/orientation_3d.html">Open simulated-axis comparison</a> · <a href="../physics_axis_preview/physics_axes.mp4">Two-camera axis-overlay video</a></p>'
     page+='<div class="scroll"><table><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>'
     page+=''.join(cards)+'</html>'
     (args.root/'index.html').write_text(page,encoding='utf-8')
