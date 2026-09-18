@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import (CAMERA_NAMES, load_config, load_rig, read_yaml, rotation,
-                     sha256, write_json, write_yaml)
+from .config import (CAMERA_NAMES, calibration_hashes_match, load_config, load_rig,
+                     read_yaml, rotation, sha256, write_json, write_yaml)
 from .solver import fit_joint
 from .tracking import (initialize_angles, initialize_axes, initialize_pivot,
                        save_tracks, track_session)
@@ -26,9 +26,17 @@ def _output_directory(output):
     return output
 
 
+def _calibration_paths(cfg):
+    return {**{name: cfg["cameras"][name]["intrinsics"] for name in CAMERA_NAMES},
+            "stereo": cfg["stereo"]["path"]}
+
+
 def calibration_hashes(cfg):
-    return {**{name: sha256(cfg["cameras"][name]["intrinsics"]) for name in CAMERA_NAMES},
-            "stereo": sha256(cfg["stereo"]["path"])}
+    return {name: sha256(path) for name, path in _calibration_paths(cfg).items()}
+
+
+def calibration_matches(cfg, expected):
+    return calibration_hashes_match(_calibration_paths(cfg), expected)
 
 
 def _solver_options(cfg):
@@ -67,7 +75,7 @@ def load_axes(cfg):
     pivot = np.asarray(axes.get("pivot_c920_m"), dtype=float)
     if pivot.shape != (3,) or not np.isfinite(pivot).all():
         raise ValueError("axes.pivot_c920_m must be a finite metric C920 position")
-    if axes.get("calibration_hashes") != calibration_hashes(cfg):
+    if not calibration_matches(cfg, axes.get("calibration_hashes")):
         raise ValueError("Axis calibration is stale: intrinsic/stereo calibration hashes changed or are missing. Recalibrate axes.")
     for key in ("radius_m", "gap_m"):
         if key not in axes or not np.isclose(axes[key], cfg["geometry"][key], rtol=1e-12, atol=1e-12):

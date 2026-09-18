@@ -172,7 +172,10 @@ The tool resolves 180° checkerboard corner-order differences by consistency of
 the relative camera pose across varied board tilts. It rejects ambiguous or
 inconsistent data. Do not rotate one camera's images to visually match the other.
 Stereo outputs include hashes of both intrinsic calibration files, preventing
-accidental reuse after intrinsics change. The underlying fixed-intrinsics method
+accidental reuse after intrinsics change. Provenance checks for stereo, axes and
+rendered results tolerate LF/CRLF line-ending conversion when moving between
+Linux and Windows (including Git checkouts); other file changes still invalidate
+the saved hashes. The underlying fixed-intrinsics method
 is OpenCV `stereoCalibrate`. [OpenCV reference](https://docs.opencv.org/4.13.0/d9/d0c/group__calib3d.html)
 
 The supplied Kalibr calibration is now imported in `calibration/c920.yaml`
@@ -224,8 +227,24 @@ section; exclude the yoke, inner discs, rims and background. An enclosing circle
 is used for the mask and **coarse initialization only**, not the final separated
 shell model. Set `cameras.<name>.circle: [u0,v0,r_px]` in undistorted pixels if the
 automatic seed is wrong. `preview.py --pick-circle` lets you choose three outer
-silhouette points and saves a suggestion beside the preview; copy it into the
-rig after review. `--circle U V R` is another preview-only trial.
+silhouette points. Press Enter to accept: after saving the diagnostic preview,
+the script automatically updates that camera's circle in `config/rig.yaml` (or
+the file supplied with `--config`). `--circle U V R` also saves the supplied
+circle. Use `--no-save` for a preview-only trial; Escape cancels the picker without
+changing the config. Comments, relative paths, and the other camera's settings
+are preserved. The PNG and companion YAML are still saved beside the preview.
+
+```bash
+python3 scripts/preview.py --session data/roll_01 --camera c920 --frame 0 --pick-circle --output out/c920_circle.png
+python3 scripts/preview.py --session data/roll_01 --camera brio101 --frame 0 --pick-circle --output out/brio_circle.png
+```
+
+Use one saved circle per camera for a fixed mounting, then check it on several
+frames from both roll and swivel clips without `--pick-circle`. Normal previews
+do not change the config. Each camera also has its own red/green HSV thresholds
+in `cameras.<name>.segment`. They are reused across both clip types; edit them
+manually in `rig.yaml` only if the masks need adjustment, then rerun the previews.
+Circle selection does not tune or overwrite the HSV thresholds.
 
 ## 5. Jointly calibrate axes, then measure motion
 

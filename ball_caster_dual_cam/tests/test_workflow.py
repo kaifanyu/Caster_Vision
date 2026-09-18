@@ -15,7 +15,7 @@ import yaml
 
 from dualcam.config import load_config, load_rig, sha256, write_yaml
 from dualcam.workflow import (WorkflowError, calibrate_axes, calibration_hashes,
-                              load_axes, run_motion)
+                              calibration_matches, load_axes, run_motion)
 from scripts.calibrate_axes import main as axes_main
 from tests.test_solver import make_clip, setup_scene
 
@@ -50,6 +50,67 @@ def tracked_clip(clip, name):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_calibration_provenance_survives_linux_windows_newline_conversion(self):
+        for source_eol, target_eol in ((b"\n", b"\r\n"), (b"\r\n", b"\n")):
+            with self.subTest(source_eol=source_eol), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                _, cfg, cameras, F, _ = rig_files(root)
+                paths = [root / f"{name}.yaml" for name in ("c920", "brio101", "stereo")]
+
+                def convert(path, newline):
+                    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", newline))
+
+                for path in paths[:2]:
+                    convert(path, source_eol)
+                stereo = yaml.safe_load(paths[2].read_text())
+                stereo["intrinsics_sha256"] = {name: sha256(root / f"{name}.yaml")
+                                                for name in ("c920", "brio101")}
+                write_yaml(paths[2], stereo)
+                convert(paths[2], source_eol)
+                saved_hashes = calibration_hashes(cfg)
+                axes_path = root / "axes.yaml"
+                axes = yaml.safe_load(axes_path.read_text())
+                axes["calibration_hashes"] = saved_hashes
+                write_yaml(axes_path, axes)
+                axes_before = axes_path.read_bytes()
+
+                for path in paths:
+                    convert(path, target_eol)
+                self.assertTrue(all(saved_hashes[name] != digest
+                                    for name, digest in calibration_hashes(cfg).items()))
+                loaded, _, _ = load_rig(cfg)
+                np.testing.assert_allclose(loaded[1]["R"], cameras[1]["R"])
+                np.testing.assert_allclose(load_axes(cfg)["R_bc"], F)
+                # Rendering uses this same comparison for saved result hashes.
+                self.assertTrue(calibration_matches(cfg, saved_hashes))
+                self.assertEqual(axes_path.read_bytes(), axes_before)
+
+                # A real intrinsic change must still fail after conversion.
+                data = yaml.safe_load(paths[0].read_text())
+                data["K"][0][0] += 1
+                write_yaml(paths[0], data)
+                with self.assertRaisesRegex(ValueError, "Stereo calibration is stale"):
+                    load_rig(cfg)
+                with self.assertRaisesRegex(ValueError, "Axis calibration is stale"):
+                    load_axes(cfg)
+                self.assertFalse(calibration_matches(cfg, saved_hashes))
+
+    def test_incomplete_or_invalid_provenance_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, cfg, _, _, _ = rig_files(root)
+            hashes = calibration_hashes(cfg)
+            for expected in (None, {}, [], {**hashes, "extra": "0" * 64},
+                             {**hashes, "c920": None}):
+                with self.subTest(expected=expected):
+                    self.assertFalse(calibration_matches(cfg, expected))
+            stereo_path = root / "stereo.yaml"
+            stereo = yaml.safe_load(stereo_path.read_text())
+            stereo["intrinsics_sha256"].pop("brio101")
+            write_yaml(stereo_path, stereo)
+            with self.assertRaisesRegex(ValueError, "Stereo calibration is stale"):
+                load_rig(cfg)
+
     def test_stale_stereo_intrinsics_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

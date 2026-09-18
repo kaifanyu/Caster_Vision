@@ -28,6 +28,24 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def calibration_hashes_match(paths, expected):
+    """Check text-file provenance, allowing only LF/CRLF conversion.
+
+    Keep saved hashes byte-exact for compatibility with existing calibrations.
+    Git and cross-platform copies can change newlines without changing any
+    calibration content; try both newline conventions against the saved hash.
+    """
+    if not isinstance(expected, dict) or expected.keys() != paths.keys():
+        return False
+    for name, path in paths.items():
+        data = Path(path).read_bytes()
+        lf = data.replace(b"\r\n", b"\n")
+        if not any(hashlib.sha256(candidate).hexdigest() == expected[name]
+                   for candidate in (data, lf, lf.replace(b"\n", b"\r\n"))):
+            return False
+    return True
+
+
 def rotation(value, label):
     a = np.asarray(value, dtype=float)
     if (a.shape != (3, 3) or not np.isfinite(a).all()
@@ -99,8 +117,8 @@ def load_intrinsics(camera_cfg):
 def load_rig(cfg):
     intrinsics = [load_intrinsics(cfg["cameras"][name]) for name in CAMERA_NAMES]
     stereo = read_yaml(cfg["stereo"]["path"])
-    expected_intrinsics = {name: info["sha256"] for name, info in zip(CAMERA_NAMES, intrinsics)}
-    if stereo.get("intrinsics_sha256") is not None and stereo["intrinsics_sha256"] != expected_intrinsics:
+    intrinsic_paths = {name: info["path"] for name, info in zip(CAMERA_NAMES, intrinsics)}
+    if stereo.get("intrinsics_sha256") is not None and not calibration_hashes_match(intrinsic_paths, stereo["intrinsics_sha256"]):
         raise ValueError("Stereo calibration is stale: its intrinsic-file hashes differ. Recalibrate stereo before fitting axes or motion.")
     if stereo.get("R_21") is None or stereo.get("t_21_m") is None:
         raise ValueError("Calibrate stereo R_21 and t_21_m with calibrate_stereo.py before fitting motion")

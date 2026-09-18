@@ -24,8 +24,8 @@ def main():
     cfg = load_config(args.config)
     cameras, intrinsics, _ = load_rig(cfg)
     result = json.loads(args.results.read_text())
-    from dualcam.workflow import calibration_hashes
-    if result.get("calibration_hashes") != calibration_hashes(cfg):
+    from dualcam.workflow import calibration_matches
+    if not calibration_matches(cfg, result.get("calibration_hashes")):
         raise ValueError("Results refer to different intrinsics/stereo; use the original calibration files")
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError("Choose a new or empty rendering output directory")
